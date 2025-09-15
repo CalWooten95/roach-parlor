@@ -8,20 +8,23 @@ services:
     depends_on:
       - db
     environment:
-      - DATABASE_URL=postgresql://betapp:supersecret@db:5432/betdb
-  # bot:
-  #   build: ./bot
-  #   environment:
-  #     - DISCORD_TOKEN=your_token_here
-  #     - DATABASE_URL=postgresql://postgres:password@db:5432/roachparlor
-  #   depends_on:
-  #     - db
+      - DATABASE_URL=<postgres-connection-string>
+  bot:
+    build: ./bot
+    environment:
+      - DISCORD_TOKEN=<discord-bot-token>
+      - OPENAI_API_KEY=<openai-api-key>
+      - TARGET_CHANNEL = os.getenv("TARGET_CHANNEL", "<target-channel-name>")
+      - DATABASE_URL=<postgres-connection-string>
+      - API_URL=http://web:8000
+    depends_on:
+      - db
   db:
     image: postgres:14
     restart: always
     environment:
       POSTGRES_USER: betapp
-      POSTGRES_PASSWORD: supersecret
+      POSTGRES_PASSWORD: <postgres-pw>
       POSTGRES_DB: betdb
     ports:
       - "5432:5432"
