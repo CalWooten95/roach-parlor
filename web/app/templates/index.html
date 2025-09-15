@@ -14,50 +14,48 @@
     <!-- Wagers -->
     <div class="space-y-3 mt-3">
       {% for wager in user.wagers %}
-      <div class="relative border p-3 rounded-xl flex justify-between items-center group">
-        <!-- Status Badge -->
-        <div class="absolute -top-2 -left-2">
-          {% if wager.status == 'won' %}
-            <span class="bg-green-500 text-white text-xs font-bold px-2 py-1 rounded shadow">WON</span>
-          {% elif wager.status == 'lost' %}
-            <span class="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded shadow">LOST</span>
-          {% elif wager.status == 'removed' %}
-            <span class="bg-gray-400 text-white text-xs font-bold px-2 py-1 rounded shadow">REMOVED</span>
-          {% else %}
-            <span class="bg-blue-500 text-white text-xs font-bold px-2 py-1 rounded shadow">OPEN</span>
-          {% endif %}
-        </div>
+        {% if wager.status != 'removed' %}
+        <div class="relative border p-3 rounded-xl flex justify-between items-center group">
+          <!-- Status Badge -->
+          <div class="absolute -top-2 -left-2">
+            {% if wager.status == 'won' %}
+              <span class="bg-green-500 text-white text-xs font-bold px-2 py-1 rounded shadow">WON</span>
+            {% elif wager.status == 'lost' %}
+              <span class="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded shadow">LOST</span>
+            {% else %}
+              <span class="bg-blue-500 text-white text-xs font-bold px-2 py-1 rounded shadow">OPEN</span>
+            {% endif %}
+          </div>
 
-        <!-- Description + Amount/Line + Action Buttons -->
-        <div>
-          <p class="font-medium">{{ wager.description }}</p>
-          <p class="text-sm text-gray-600">Amount: ${{ wager.amount }} | Line: {{ wager.line }}</p>
+          <!-- Description + Amount/Line + Action Buttons -->
+          <div>
+            <p class="font-medium">{{ wager.description }}</p>
+            <p class="text-sm text-gray-600">Amount: ${{ wager.amount }} | Line: {{ wager.line }}</p>
 
-          <form method="post" action="/wagers/{{ wager.id }}/status"
-                class="hidden group-hover:flex gap-2 mt-2 transition ease-in-out duration-200">
-            <button name="status" value="won"
-                    class="transition transform hover:scale-125 bg-green-500 text-white px-3 py-1 rounded-full">✅</button>
-            <button name="status" value="lost"
-                    class="transition transform hover:scale-125 bg-red-500 text-white px-3 py-1 rounded-full">❌</button>
-            <button name="status" value="removed"
-                    onclick="return confirm('Are you sure you want to remove this wager?')"
-                    class="transition transform hover:scale-125 bg-gray-300 px-3 py-1 rounded-full">🗑</button>
-          </form>
-        </div>
+            <form method="post" action="/wagers/{{ wager.id }}/status"
+                  class="hidden group-hover:flex gap-2 mt-2 transition ease-in-out duration-200">
+              <button name="status" value="won"
+                      class="transition transform hover:scale-125 bg-green-500 text-white px-3 py-1 rounded-full">✅</button>
+              <button name="status" value="lost"
+                      class="transition transform hover:scale-125 bg-red-500 text-white px-3 py-1 rounded-full">❌</button>
+              <button name="status" value="removed"
+                      onclick="return confirm('Are you sure you want to remove this wager?')"
+                      class="transition transform hover:scale-125 bg-gray-300 px-3 py-1 rounded-full">🗑</button>
+            </form>
+          </div>
 
-        <!-- Status Icon (big on the right) -->
-        <div class="text-4xl">
-          {% if wager.status == 'won' %}
-            <span class="text-green-500">✅</span>
-          {% elif wager.status == 'lost' %}
-            <span class="text-red-500">❌</span>
-          {% elif wager.status == 'removed' %}
-            <span class="text-gray-400">🚫</span>
-          {% else %}
-            <span class="text-gray-300">—</span>
-          {% endif %}
+          <!-- Status Icon (big on the right) -->
+          <div class="text-4xl">
+            {% if wager.status == 'won' %}
+              <span class="text-green-500">✅</span>
+            {% elif wager.status == 'lost' %}
+              <span class="text-red-500">❌</span>
+            {% else %}
+              <span class="text-gray-300">—</span>
+            {% endif %}
+          </div>
         </div>
-      </div>
+        {% endif %}
       {% endfor %}
     </div>
   </div>
