@@ -1,0 +1,16 @@
+### Create user
+
+{
+  "discord_id": "1234567890",
+  "display_name": "Josh",
+  "profile_pic_url": "https://i.pravatar.cc/100?img=11"
+}
+
+
+### create wager
+{
+  "user_id": 1,
+  "description": "2-leg teaser: Ravens -6, Cardinals -1",
+  "amount": 125,
+  "line": "-125"
+}

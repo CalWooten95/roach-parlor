@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sports Bet Tracker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-6">
+  <h1 class="text-3xl font-bold mb-6 text-center">Las Cucarachas Gambling Help Line</h1>
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <!-- User Card -->
+    <div class="bg-white rounded-2xl shadow p-4">
+      <div class="flex items-center gap-3">
+        <img src="https://i.pravatar.cc/50?img=1" alt="Profile" class="w-12 h-12 rounded-full">
+        <input type="text" value="Josh" class="text-xl font-semibold flex-1 border-b border-gray-300 focus:outline-none">
+      </div>
+      <div class="mt-4">
+        <button class="w-full bg-blue-500 text-white py-2 rounded-xl" onclick="toggleWagers(this)">Show Open Wagers</button>
+        <div class="hidden mt-4 space-y-3">
+          <!-- Mock Wager -->
+          <div class="border rounded-xl p-3 bg-gray-50">
+            <p class="text-sm font-semibold">2-Bet Teaser</p>
+            <p class="text-sm text-gray-700">Ravens -6, Cardinals -1</p>
+            <p class="text-sm text-gray-500">Wager: $125 | Payout: $225</p>
+          </div>
+          <div class="border rounded-xl p-3 bg-gray-50">
+            <p class="text-sm font-semibold">5-Leg Parlay</p>
+            <p class="text-sm text-gray-700">Ridley O4.5 Rec, Barkley U86.5 Yds...</p>
+            <p class="text-sm text-gray-500">Wager: $10 | Payout: $230</p>
+          </div>
+        </div>
+        <button class="mt-2 w-full text-blue-500 text-sm hover:underline">Previous Wagers</button>
+      </div>
+    </div>
+
+    <!-- Repeat mock user cards -->
+    <div class="bg-white rounded-2xl shadow p-4">
+      <div class="flex items-center gap-3">
+        <img src="C:\Users\Calwo\roach-parlor\images\mike.PNG" alt="Profile" class="w-12 h-12 rounded-full">
+        <input type="text" value="Dreadedmike" class="text-xl font-semibold flex-1 border-b border-gray-300 focus:outline-none">
+      </div>
+      <div class="mt-4">
+        <button class="w-full bg-blue-500 text-white py-2 rounded-xl" onclick="toggleWagers(this)">Show Open Wagers</button>
+        <div class="hidden mt-4 space-y-3">
+          <div class="border rounded-xl p-3 bg-gray-50">
+            <p class="text-sm font-semibold">Moneyline</p>
+            <p class="text-sm text-gray-700">Eagles to Win</p>
+            <p class="text-sm text-gray-500">Wager: $120 | Payout: $220</p>
+          </div>
+        </div>
+        <button class="mt-2 w-full text-blue-500 text-sm hover:underline">Previous Wagers</button>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-2xl shadow p-4">
+      <div class="flex items-center gap-3">
+        <img src="C:\Users\Calwo\roach-parlor\images\erik.PNG" alt="Profile" class="w-12 h-12 rounded-full">
+        <input type="text" value="Anne Hath Husbando" class="text-xl font-semibold flex-1 border-b border-gray-300 focus:outline-none">
+      </div>
+      <div class="mt-4">
+        <button class="w-full bg-blue-500 text-white py-2 rounded-xl" onclick="toggleWagers(this)">Show Open Wagers</button>
+        <div class="hidden mt-4 space-y-3">
+          <div class="border rounded-xl p-3 bg-gray-50">
+            <p class="text-sm font-semibold">3-Leg Parlay</p>
+            <p class="text-sm text-gray-700">Bills ML, Jets +3, Over 44.5</p>
+            <p class="text-sm text-gray-500">Wager: $50 | Payout: $300</p>
+          </div>
+        </div>
+        <button class="mt-2 w-full text-blue-500 text-sm hover:underline">Previous Wagers</button>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-2xl shadow p-4">
+      <div class="flex items-center gap-3">
+        <img src="C:\Users\Calwo\roach-parlor\images\austin.PNG" alt="Profile" class="w-12 h-12 rounded-full">
+        <input type="text" value="Pre-season ♦♦ Sharp" class="text-xl font-semibold flex-1 border-b border-gray-300 focus:outline-none">
+      </div>
+      <div class="mt-4">
+        <button class="w-full bg-blue-500 text-white py-2 rounded-xl" onclick="toggleWagers(this)">Show Open Wagers</button>
+        <div class="hidden mt-4 space-y-3">
+          <div class="border rounded-xl p-3 bg-gray-50">
+            <p class="text-sm font-semibold">Single Bet</p>
+            <p class="text-sm text-gray-700">Chiefs -3.5</p>
+            <p class="text-sm text-gray-500">Wager: $75 | Payout: $145</p>
+          </div>
+        </div>
+        <button class="mt-2 w-full text-blue-500 text-sm hover:underline">Previous Wagers</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function toggleWagers(button) {
+      const wagersDiv = button.nextElementSibling;
+      wagersDiv.classList.toggle('hidden');
+      button.textContent = wagersDiv.classList.contains('hidden') ? 'Show Open Wagers' : 'Hide Open Wagers';
+    }
+  </script>
+</body>
+</html>
