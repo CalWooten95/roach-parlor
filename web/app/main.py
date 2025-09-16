@@ -27,3 +27,9 @@ async def read_dashboard(request: Request, db=Depends(get_db)):
 async def update_wager_status(wager_id: int, status: str = Form(...), db=Depends(get_db)):
     crud.update_wager_status(db, wager_id, status)
     return RedirectResponse("/", status_code=303)
+
+
+@app.post("/wagers/{wager_id}/legs/{leg_id}/status")
+async def update_wager_leg_status(wager_id: int, leg_id: int, status: str = Form(...), db=Depends(get_db)):
+    crud.update_wager_leg_status(db, leg_id, status)
+    return RedirectResponse("/", status_code=303)

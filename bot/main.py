@@ -57,7 +57,7 @@ def ensure_user_and_get_id(author: discord.User | discord.Member) -> int:
 
 def parse_wager_from_image(image_url: str) -> dict:
     """
-    Ask OpenAI to extract {description, amount, line} from a screenshot.
+    Ask OpenAI to extract {description, amount, line, legs[]} from a screenshot.
     If a value is missing, we default amount=0, line="" in the caller.
     """
     if _openai_client is None:
@@ -65,17 +65,16 @@ def parse_wager_from_image(image_url: str) -> dict:
 
     system_prompt = (
         "You extract sports bet details from screenshots of sports wagers. "
-        "Return STRICT JSON with keys: description (string), amount (number), line (string). "
-        "- For parlays: description MUST include all legs in a readable format. "
-        "Example: \"3 leg parlay - Vikings -3, Cowboys ML, Bears +7\". "
-        "- For player props: include the player name, stat, and threshold. "
-        "Example: \"Lamar Jackson over 45.5 rushing yards, Josh Allen over 34.5 rushing yards\". "
-        "- For parlays that include player props: merge everything into one description. "
-        "Example: \"2 leg parlay - Lamar Jackson over 45.5 rushing yards, Josh Allen over 34.5 rushing yards\". "
+        "Return STRICT JSON with keys: description (string), amount (number), line (string), legs (array). "
+        "Each item in legs must be an object: {\"description\": string, \"status\": one of [open, won, lost]}. "
+        "Default status should be 'open' unless the ticket clearly shows otherwise. "
+        "- For parlays: include one leg per selection with concise descriptions (team/player, bet type, number). "
+        "- For single bets: still include a legs array with one item representing the main bet. "
+        "- For player props: include the player name, stat, and threshold in the leg description. "
         "- Amount must be the stake wagered (the 'Risk'). "
-        "- For parlays: if only 'Risk' and 'To Win' are shown, calculate the implied American odds. "
-        "Formula: If Win >= Risk → line = +(Win / Risk * 100). "
-        "If Win < Risk → line = -(Risk / Win * 100). Round to nearest 5 or 10. "
+        "- If only 'Risk' and 'To Win' are shown, calculate the implied American odds using: "
+        "If Win >= Risk → line = +(Win / Risk * 100). If Win < Risk → line = -(Risk / Win * 100). "
+        "Round odds to the nearest 5. "
         "- If a field is unknown, use an empty string for line and 0 for amount. "
         "Do not include any extra keys or text."
     )
@@ -127,15 +126,32 @@ def parse_wager_from_image(image_url: str) -> dict:
     except Exception:
         amount = 0.0
 
-    return {"description": desc, "amount": amount, "line": line}
+    raw_legs = data.get("legs") or []
+    legs: list[dict] = []
+    for leg in raw_legs:
+        if not isinstance(leg, dict):
+            continue
+        leg_desc = str(leg.get("description") or "").strip()
+        if not leg_desc:
+            continue
+        leg_status = str(leg.get("status") or "open").lower().strip()
+        if leg_status not in {"open", "won", "lost"}:
+            leg_status = "open"
+        legs.append({"description": leg_desc, "status": leg_status})
+
+    if not legs and desc:
+        legs.append({"description": desc, "status": "open"})
+
+    return {"description": desc, "amount": amount, "line": line, "legs": legs}
 
 
-def create_wager(user_id: int, description: str, amount: float, line: str) -> dict:
+def create_wager(user_id: int, description: str, amount: float, line: str, legs: list[dict] | None = None) -> dict:
     payload = {
         "user_id": user_id,
         "description": description,
         "amount": amount,
-        "line": line
+        "line": line,
+        "legs": legs or []
     }
     r = requests.post(f"{API_URL}/wagers/", json=payload, timeout=10)
     r.raise_for_status()
@@ -189,10 +205,17 @@ async def on_message(message: discord.Message):
             line = parsed["line"] or ""
 
             # 3) Create wager in your API
-            created = create_wager(user_id=user_id, description=desc, amount=amount, line=line)
+            created = create_wager(user_id=user_id, description=desc, amount=amount, line=line, legs=parsed["legs"])
 
             # 4) Ack
-            summary = f"**Tracked!**\n• **Desc:** {desc}\n• **Amount:** ${amount:.2f}\n• **Line:** {line or '(unknown)'}"
+            leg_lines = "\n".join(f"    - {leg['description']} ({leg['status']})" for leg in parsed["legs"])
+            summary = (
+                f"**Tracked!**\n• **Desc:** {desc}\n"
+                f"• **Amount:** ${amount:.2f}\n"
+                f"• **Line:** {line or '(unknown)'}"
+            )
+            if leg_lines:
+                summary += f"\n• **Legs:**\n{leg_lines}"
             if WEB_UI_URL:
                 summary += f"\nTracker UI: {WEB_UI_URL}"
             await message.channel.send(summary)

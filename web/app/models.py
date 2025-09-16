@@ -35,6 +35,7 @@ class Wager(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="wagers")
+    legs = relationship("WagerLeg", back_populates="wager", cascade="all, delete-orphan")
 
     @property
     def payout(self):
@@ -68,4 +69,21 @@ class Wager(Base):
             return 100 / abs(value)
 
         return value
+
+
+class WagerLegStatus(str, enum.Enum):
+    open = "open"
+    won = "won"
+    lost = "lost"
+
+
+class WagerLeg(Base):
+    __tablename__ = "wager_legs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    wager_id = Column(Integer, ForeignKey("wagers.id", ondelete="CASCADE"))
+    description = Column(Text)
+    status = Column(Enum(WagerLegStatus), default=WagerLegStatus.open)
+
+    wager = relationship("Wager", back_populates="legs")
 
