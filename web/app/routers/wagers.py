@@ -18,6 +18,7 @@ class WagerOut(BaseModel):
     amount: float
     line: str
     status: str
+    payout: float | None = None
 
     class Config:
         orm_mode = True

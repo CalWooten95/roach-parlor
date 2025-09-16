@@ -31,6 +31,9 @@
           <div>
             <p class="font-medium">{{ wager.description }}</p>
             <p class="text-sm text-gray-600">Amount: ${{ wager.amount }} | Line: {{ wager.line }}</p>
+            {% if wager.payout is not none %}
+            <p class="text-sm text-gray-600">Payout: ${{ '{:,.2f}'.format(wager.payout) }}</p>
+            {% endif %}
 
             <form method="post" action="/wagers/{{ wager.id }}/status"
                   class="hidden group-hover:flex gap-2 mt-2 transition ease-in-out duration-200">
