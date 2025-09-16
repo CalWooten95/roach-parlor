@@ -8,6 +8,7 @@ API_URL = os.getenv("API_URL", "http://web:8000")  # in docker, web:8000 ; local
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 TARGET_CHANNEL = os.getenv("TARGET_CHANNEL", "lv-raiders")
+WEB_UI_URL = os.getenv("WEB_UI_URL")
 
 # --- OpenAI (Responses API) ---
 # Using the official OpenAI Python SDK (>=1.0). If you prefer, you can keep using requests.
@@ -192,6 +193,8 @@ async def on_message(message: discord.Message):
 
             # 4) Ack
             summary = f"**Tracked!**\n• **Desc:** {desc}\n• **Amount:** ${amount:.2f}\n• **Line:** {line or '(unknown)'}"
+            if WEB_UI_URL:
+                summary += f"\nTracker UI: {WEB_UI_URL}"
             await message.channel.send(summary)
 
         except requests.HTTPError as http_err:
