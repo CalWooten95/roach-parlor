@@ -8,23 +8,23 @@ services:
     depends_on:
       - db
     environment:
-      - DATABASE_URL=<postgres-connection-string>
+      - DATABASE_URL=${DATABASE_URL}
   bot:
     build: ./bot
     environment:
-      - DISCORD_TOKEN=<discord-bot-token>
-      - OPENAI_API_KEY=<openai-api-key>
-      - TARGET_CHANNEL = os.getenv("TARGET_CHANNEL", "<target-channel-name>")
-      - DATABASE_URL=<postgres-connection-string>
-      - API_URL=http://web:8000
+      DISCORD_TOKEN: ${DISCORD_TOKEN}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      API_URL: ${API_URL}
+      TARGET_CHANNEL: ${TARGET_CHANNEL}
+      WEB_UI_URL: ${WEB_UI_URL}
     depends_on:
-      - db
+      - web
   db:
     image: postgres:14
     restart: always
     environment:
       POSTGRES_USER: betapp
-      POSTGRES_PASSWORD: <postgres-pw>
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: betdb
     ports:
       - "5432:5432"
