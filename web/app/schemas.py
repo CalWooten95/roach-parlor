@@ -1,6 +1,6 @@
 # Pydantic schemas
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, Field
+from typing import Optional, List
 
 class UserBase(BaseModel):
     discord_id: str
@@ -15,17 +15,37 @@ class User(UserBase):
     class Config:
         orm_mode = True
 
+class WagerLegBase(BaseModel):
+    description: str
+    status: Optional[str] = "open"
+
+
+class WagerLegCreate(WagerLegBase):
+    pass
+
+
+class WagerLeg(WagerLegBase):
+    id: int
+
+    class Config:
+        orm_mode = True
+
+
 class WagerBase(BaseModel):
     description: str
     image_url: Optional[str]
     status: Optional[str] = "open"
+    legs: List[WagerLeg] = Field(default_factory=list)
+
 
 class WagerCreate(WagerBase):
-    pass
+    legs: List[WagerLegCreate] = Field(default_factory=list)
+
 
 class Wager(WagerBase):
     id: int
     user_id: int
     created_at: Optional[str]
+
     class Config:
         orm_mode = True
