@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-6">League Catalog</h1>
+<p class="text-gray-600 mb-6">Review the aggregated leagues, teams, and players to confirm the data powering wager matchups.</p>
+
+{% if leagues %}
+<div class="flex flex-wrap gap-2 mb-6">
+  {% for league in leagues %}
+  <button
+    type="button"
+    class="px-4 py-2 rounded-full transition text-sm font-medium
+           {% if loop.first %}bg-gray-900 text-white{% else %}bg-gray-200 text-gray-700{% endif %}"
+    data-league-tab="{{ league.key or league.name|lower|replace(' ', '-') }}">
+    {{ league.display_name or league.name }}
+  </button>
+  {% endfor %}
+</div>
+
+<div class="space-y-6">
+  {% for league in leagues %}
+  {% set counts = namespace(players=0) %}
+  {% for team in league.teams %}
+    {% set counts.players = counts.players + (team.players|length) %}
+  {% endfor %}
+  <section
+    class="bg-white rounded-xl shadow p-6 {% if not loop.first %}hidden{% endif %}"
+    data-league-panel="{{ league.key or league.name|lower|replace(' ', '-') }}">
+    <header class="flex items-center justify-between flex-wrap gap-4 mb-4">
+      <div>
+        <h2 class="text-xl font-semibold">{{ league.display_name or league.name }}</h2>
+        <p class="text-sm text-gray-500 uppercase tracking-wide">{{ league.sport or league.key }}</p>
+      </div>
+      <div class="flex items-center gap-6 text-sm text-gray-600">
+        <span><strong>{{ league.teams|length }}</strong> teams</span>
+        <span><strong>{{ counts.players }}</strong> players</span>
+      </div>
+    </header>
+
+    <div class="overflow-x-auto">
+      <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Team</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Abbr.</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">External ID</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Players</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-200">
+          {% for team in league.teams %}
+          <tr class="align-top">
+            <td class="px-4 py-3">
+              <div class="flex items-center gap-3">
+                {% if team.logo_url %}
+                <img src="{{ team.logo_url }}" alt="{{ team.display_name or team.name }}" class="w-8 h-8 rounded-full object-contain border"/>
+                {% else %}
+                <span class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">—</span>
+                {% endif %}
+                <div>
+                  <p class="font-medium text-gray-900">{{ team.display_name or team.nickname or team.name }}</p>
+                  <p class="text-xs text-gray-500">{{ team.location }}</p>
+                </div>
+              </div>
+            </td>
+            <td class="px-4 py-3 text-sm text-gray-600">{{ team.abbreviation or "—" }}</td>
+            <td class="px-4 py-3 text-sm text-gray-600">{{ team.external_id or "—" }}</td>
+            <td class="px-4 py-3 text-sm text-gray-600">
+              {% if team.players %}
+              <details class="group">
+                <summary class="cursor-pointer text-blue-600 hover:underline">{{ team.players|length }} listed</summary>
+                <ul class="mt-2 space-y-1 text-gray-700">
+                  {% for player in team.players %}
+                  <li class="flex items-center justify-between gap-4">
+                    <span>{{ player.full_name }}</span>
+                    <span class="text-xs text-gray-500">{{ player.position or "" }} {{ player.jersey_number or "" }}</span>
+                  </li>
+                  {% endfor %}
+                </ul>
+              </details>
+              {% else %}
+              <span class="text-gray-400">0 listed</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endfor %}
+</div>
+
+<script>
+  const tabs = document.querySelectorAll('[data-league-tab]');
+  const panels = document.querySelectorAll('[data-league-panel]');
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const target = tab.getAttribute('data-league-tab');
+      tabs.forEach(btn => {
+        btn.classList.remove('bg-gray-900', 'text-white');
+        btn.classList.add('bg-gray-200', 'text-gray-700');
+      });
+      tab.classList.add('bg-gray-900', 'text-white');
+      tab.classList.remove('bg-gray-200', 'text-gray-700');
+
+      panels.forEach(panel => {
+        panel.classList.toggle('hidden', panel.getAttribute('data-league-panel') !== target);
+      });
+    });
+  });
+</script>
+{% else %}
+<p class="text-gray-500">No league data yet. Use the catalog API to populate leagues, teams, and players.</p>
+{% endif %}
+{% endblock %}

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from .. import crud, models, database
 from pydantic import BaseModel, Field
+from datetime import datetime
 
 router = APIRouter(prefix="/wagers", tags=["wagers"])
 
@@ -19,12 +20,57 @@ class WagerLegOut(BaseModel):
         orm_mode = True
 
 
+class TeamSummary(BaseModel):
+    id: int
+    league_id: int
+    name: str
+    location: str | None = None
+    display_name: str | None = None
+    nickname: str | None = None
+    abbreviation: str | None = None
+    logo_url: str | None = None
+
+    class Config:
+        orm_mode = True
+
+
+class LeagueSummary(BaseModel):
+    id: int
+    key: str
+    name: str
+    display_name: str | None = None
+    sport: str | None = None
+
+    class Config:
+        orm_mode = True
+
+
+class WagerMatchupPayload(BaseModel):
+    league_id: int | None = None
+    home_team_id: int | None = None
+    away_team_id: int | None = None
+    scheduled_at: datetime | None = None
+
+
+class WagerMatchupOut(BaseModel):
+    id: int
+    league: LeagueSummary | None = None
+    home_team: TeamSummary | None = None
+    away_team: TeamSummary | None = None
+    scheduled_at: datetime | None = None
+
+    class Config:
+        orm_mode = True
+
+
 class WagerCreate(BaseModel):
     user_id: int
     description: str
     amount: float
     line: str
     legs: list[WagerLegPayload] | None = None
+    matchup: WagerMatchupPayload | None = None
+
 
 class WagerOut(BaseModel):
     id: int
@@ -35,6 +81,7 @@ class WagerOut(BaseModel):
     status: str
     payout: float | None = None
     legs: list[WagerLegOut] = Field(default_factory=list)
+    matchup: WagerMatchupOut | None = None
 
     class Config:
         orm_mode = True
@@ -46,7 +93,16 @@ def create_wager(wager: WagerCreate, db: Session = Depends(database.get_db)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     legs = [leg.model_dump() for leg in (wager.legs or [])]
-    return crud.create_wager(db, user_id=wager.user_id, description=wager.description, amount=wager.amount, line=wager.line, legs=legs)
+    matchup = wager.matchup.model_dump() if wager.matchup else None
+    return crud.create_wager(
+        db,
+        user_id=wager.user_id,
+        description=wager.description,
+        amount=wager.amount,
+        line=wager.line,
+        legs=legs,
+        matchup=matchup,
+    )
 
 
 @router.get("/{user_id}", response_model=list[WagerOut])
