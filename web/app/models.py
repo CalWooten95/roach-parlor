@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Text, Enum, DateTime, func
+from decimal import Decimal, InvalidOperation
+from sqlalchemy import Column, Integer, String, ForeignKey, Text, Enum, DateTime, func, Numeric
 from sqlalchemy.orm import relationship
 from .database import Base
 import enum
@@ -115,7 +116,7 @@ class Wager(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     description = Column(Text)
-    amount = Column(Integer)            # <-- Add this
+    amount = Column(Numeric(12, 2))            # <-- Add this
     line = Column(String)               # <-- And this
     image_url = Column(String, nullable=True)
     status = Column(Enum(WagerStatus), default=WagerStatus.open)
@@ -136,11 +137,16 @@ class Wager(Base):
         if self.amount is None:
             return None
 
+        try:
+            amount_value = Decimal(self.amount)
+        except (InvalidOperation, TypeError):
+            return None
+
         multiplier = self._odds_multiplier()
         if multiplier is None:
             return None
 
-        return round(self.amount * multiplier, 2)
+        return round(float(amount_value) * multiplier, 2)
 
     def _odds_multiplier(self):
         """Derive a multiplier from American odds or decimal-style lines."""

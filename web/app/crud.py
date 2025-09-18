@@ -1,4 +1,5 @@
 import re
+from decimal import Decimal, InvalidOperation
 from sqlalchemy.orm import Session, selectinload
 from . import models
 
@@ -65,7 +66,12 @@ def create_wager(
     legs: list[dict] | None = None,
     matchup: dict | None = None,
 ):
-    wager = models.Wager(user_id=user_id, description=description, amount=amount, line=line)
+    try:
+        amount_value = Decimal(str(amount)).quantize(Decimal("0.01"))
+    except (InvalidOperation, TypeError):
+        amount_value = Decimal("0.00")
+
+    wager = models.Wager(user_id=user_id, description=description, amount=amount_value, line=line)
     if legs:
         _prepare_legs(wager, legs)
     if matchup:
