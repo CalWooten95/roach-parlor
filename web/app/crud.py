@@ -312,8 +312,11 @@ def match_leg_description_to_teams(description: str, aliases: list[dict[str, obj
         if normalized_alias not in normalized_text:
             continue
 
+        pattern = rf"\b{re.escape(alias_text)}\b"
         if strict:
-            pattern = rf"\b{re.escape(alias_text)}\b"
+            if not re.search(pattern, lower_text):
+                continue
+        elif len(normalized_alias) <= 5:
             if not re.search(pattern, lower_text):
                 continue
 
