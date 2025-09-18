@@ -34,12 +34,59 @@
             {% if wager.payout is not none %}
             <p class="text-sm text-gray-600">Payout: ${{ '{:,.2f}'.format(wager.payout) }}</p>
             {% endif %}
+            {% if wager.matchup and (not wager.legs or wager.legs|length <= 1) %}
+            {% set home = wager.matchup.home_team %}
+            {% set away = wager.matchup.away_team %}
+            <div class="mt-3">
+              <div class="flex items-center gap-4 bg-gray-50 rounded-lg px-3 py-2">
+                <div class="flex items-center gap-2">
+                  {% if home and home.logo_url %}
+                  <img src="{{ home.logo_url }}" alt="{{ home.display_name or home.name }} logo" class="w-8 h-8 object-contain rounded-full border"/>
+                  {% else %}
+                  <span class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">—</span>
+                  {% endif %}
+                  <span class="font-semibold text-sm">{{ home.display_name or home.name if home else 'TBD' }}</span>
+                </div>
+                <span class="text-xs text-gray-500 uppercase tracking-wide">vs</span>
+                <div class="flex items-center gap-2">
+                  {% if away and away.logo_url %}
+                  <img src="{{ away.logo_url }}" alt="{{ away.display_name or away.name }} logo" class="w-8 h-8 object-contain rounded-full border"/>
+                  {% else %}
+                  <span class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">—</span>
+                  {% endif %}
+                  <span class="font-semibold text-sm">{{ away.display_name or away.name if away else 'TBD' }}</span>
+                </div>
+              </div>
+              {% if wager.matchup.league or wager.matchup.scheduled_at %}
+              <p class="text-xs text-gray-500 mt-1">
+                {% if wager.matchup.league %}
+                  {{ wager.matchup.league.display_name or wager.matchup.league.name }}
+                {% endif %}
+                {% if wager.matchup.scheduled_at %}
+                  · {{ wager.matchup.scheduled_at.strftime('%b %d, %I:%M %p') }}
+                {% endif %}
+              </p>
+              {% endif %}
+            </div>
+            {% endif %}
             {% if wager.legs %}
             <div class="mt-3 space-y-2">
               {% for leg in wager.legs %}
               <div class="bg-gray-100 rounded-lg px-3 py-2 flex items-center justify-between">
                 <div>
                   <p class="text-sm font-medium text-gray-800">{{ leg.description }}</p>
+                  {% if leg.matched_teams %}
+                  <div class="flex items-center gap-2 mt-1">
+                    {% for team in leg.matched_teams %}
+                    <div class="flex items-center gap-1">
+                      {% if team.logo_url %}
+                      <img src="{{ team.logo_url }}" alt="{{ team.display_name }} logo" class="w-6 h-6 rounded-full object-contain border"/>
+                      {% endif %}
+                      <span class="text-xs text-gray-600">{{ team.display_name }}</span>
+                    </div>
+                    {% endfor %}
+                  </div>
+                  {% endif %}
                   <span class="text-xs font-semibold px-2 py-0.5 rounded-full
                     {% if leg.status == 'won' %} bg-green-500 text-white
                     {% elif leg.status == 'lost' %} bg-red-500 text-white

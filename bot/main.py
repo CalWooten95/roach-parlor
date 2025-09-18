@@ -1,125 +1,125 @@
-import os
 import json
+import os
+import re
+import time
+from typing import Any, Dict, List, Optional, Tuple
+
 import discord
 import requests
 
 # --- Config ---
-API_URL = os.getenv("API_URL", "http://web:8000")  # in docker, web:8000 ; locally: http://localhost:8000
+API_URL = os.getenv("API_URL", "http://web:8000")  # docker uses http://web:8000; locally http://localhost:8000
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-TARGET_CHANNEL = os.getenv("TARGET_CHANNEL", "lv-raiders")
+TARGET_CHANNEL = os.getenv("TARGET_CHANNEL", "lv-raiders-test")
 WEB_UI_URL = os.getenv("WEB_UI_URL")
 
 # --- OpenAI (Responses API) ---
-# Using the official OpenAI Python SDK (>=1.0). If you prefer, you can keep using requests.
 try:
     from openai import OpenAI
+
     _openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
-    print ("OpenAI client initialized.")
-except Exception:
+    if _openai_client:
+        print("OpenAI client initialized.")
+except Exception:  # pragma: no cover - defensive fallback
     _openai_client = None
 
 intents = discord.Intents.default()
 intents.message_content = True
 client = discord.Client(intents=intents)
 
+CATALOG_TTL_SECONDS = 60 * 15
+_catalog_cache: Dict[str, Any] = {
+    "expires": 0.0,
+    "leagues_by_key": {},
+    "team_lookup": {},  # league_id -> {normalized_alias: team_dict}
+}
 
-def _user_payload_from_discord(author: discord.User | discord.Member) -> dict:
-    # discord_id must be string to match your API
+
+def _user_payload_from_discord(author: discord.User | discord.Member) -> Dict[str, Optional[str]]:
     discord_id = str(author.id)
     display_name = getattr(author, "display_name", author.name)
     avatar_url = str(author.display_avatar.url) if author.display_avatar else None
     return {
         "discord_id": discord_id,
         "display_name": display_name,
-        "profile_pic_url": avatar_url
+        "profile_pic_url": avatar_url,
     }
 
 
 def ensure_user_and_get_id(author: discord.User | discord.Member) -> int:
-    """Create the user if not exists, otherwise fetch their id."""
     payload = _user_payload_from_discord(author)
-    # Try to create
-    r = requests.post(f"{API_URL}/users/", json=payload, timeout=10)
-    if r.status_code == 200:
-        return r.json()["id"]
-    # If exists, your API returns 400; fall back to listing + find by discord_id
-    if r.status_code == 400:
-        r2 = requests.get(f"{API_URL}/users/", timeout=10)
-        r2.raise_for_status()
-        for u in r2.json():
-            if u["discord_id"] == payload["discord_id"]:
-                return u["id"]
-    # Anything else is unexpected
-    r.raise_for_status()
+    response = requests.post(f"{API_URL}/users/", json=payload, timeout=10)
+    if response.status_code == 200:
+        return response.json()["id"]
+    if response.status_code == 400:
+        lookup = requests.get(f"{API_URL}/users/", timeout=10)
+        lookup.raise_for_status()
+        for user in lookup.json():
+            if user["discord_id"] == payload["discord_id"]:
+                return user["id"]
+    response.raise_for_status()
     raise RuntimeError("Failed to ensure user exists")
 
 
-def parse_wager_from_image(image_url: str) -> dict:
-    """
-    Ask OpenAI to extract {description, amount, line, legs[]} from a screenshot.
-    If a value is missing, we default amount=0, line="" in the caller.
-    """
+SYSTEM_PROMPT = (
+    "You extract structured data from sports wager screenshots. "
+    "Return STRICT JSON with keys: description (string), amount (number), line (string), legs (array), "
+    "league_key (string), home_team (object|null), away_team (object|null). "
+    "Each leg object must contain description (string) and status (open|won|lost). "
+    "Default status is 'open' unless the ticket clearly shows otherwise. "
+    "- For parlays: include one leg per selection with concise descriptions. "
+    "  When the ticket contains multiple independent selections, set home_team and away_team to null. "
+    "- For single bets: still include one leg describing the wager. "
+    "- For player props: include player, stat, and threshold in the leg description. "
+    "- Amount must be the stake ('Risk'). "
+    "- If only 'Risk' and 'To Win' are shown, calculate American odds: if Win >= Risk, line = +(Win/Risk*100); "
+    "  otherwise line = -(Risk/Win*100). Round odds to the nearest 5. "
+    "- Return league_key as nfl, nba, mlb, nhl when clear; otherwise use an empty string. "
+    "- home_team/away_team should include as many keys as visible: name, abbreviation, short_name, location, nickname, external_id. "
+    "  Use null when a team is unknown. "
+    "- If a field is unknown, set it to an empty string (line) or 0 (amount). "
+    "Do not add any extra keys or text."
+)
+
+
+def parse_wager_from_image(image_url: str) -> Dict[str, Any]:
     if _openai_client is None:
         raise RuntimeError("OpenAI client not initialized. Set OPENAI_API_KEY.")
 
-    system_prompt = (
-        "You extract sports bet details from screenshots of sports wagers. "
-        "Return STRICT JSON with keys: description (string), amount (number), line (string), legs (array). "
-        "Each item in legs must be an object: {\"description\": string, \"status\": one of [open, won, lost]}. "
-        "Default status should be 'open' unless the ticket clearly shows otherwise. "
-        "- For parlays: include one leg per selection with concise descriptions (team/player, bet type, number). "
-        "- For single bets: still include a legs array with one item representing the main bet. "
-        "- For player props: include the player name, stat, and threshold in the leg description. "
-        "- Amount must be the stake wagered (the 'Risk'). "
-        "- If only 'Risk' and 'To Win' are shown, calculate the implied American odds using: "
-        "If Win >= Risk → line = +(Win / Risk * 100). If Win < Risk → line = -(Risk / Win * 100). "
-        "Round odds to the nearest 5. "
-        "- If a field is unknown, use an empty string for line and 0 for amount. "
-        "Do not include any extra keys or text."
-    )
-
-    # Responses API: text + image input
-    # Ref: OpenAI Responses API docs (image inputs & text outputs)
-    resp = _openai_client.responses.create(
+    response = _openai_client.responses.create(
         model="gpt-4o-mini",
         input=[
             {
                 "role": "user",
                 "content": [
-                    {"type": "input_text", "text": system_prompt},
+                    {"type": "input_text", "text": SYSTEM_PROMPT},
                     {"type": "input_image", "image_url": image_url},
                 ],
             }
         ],
     )
 
-    # Convenient helper on SDK to get all text output
-    text = getattr(resp, "output_text", None)
+    text = getattr(response, "output_text", None)
     if not text:
-        # Fallback: try to reconstruct from content items
         try:
             parts = []
-            for item in resp.output[0].content:
-                if item["type"] == "output_text":
-                    parts.append(item["text"])
+            for item in response.output[0].content:
+                if item.get("type") == "output_text":
+                    parts.append(item.get("text", ""))
             text = "\n".join(parts)
-        except Exception:
+        except Exception:  # pragma: no cover - defensive fallback
             text = ""
 
-    # Parse JSON (model instructed to return strict JSON)
     try:
         data = json.loads(text)
     except Exception:
-        # If the model returned something not strictly JSON, try to salvage by locating a JSON block
-        import re
         match = re.search(r"\{.*\}", text, flags=re.S)
         if not match:
             raise RuntimeError(f"Model did not return JSON. Raw text:\n{text}")
         data = json.loads(match.group(0))
 
-    # Basic normalization
-    desc = str(data.get("description") or "").strip()
+    description = str(data.get("description") or "").strip()
     line = str(data.get("line") or "").strip()
     try:
         amount = float(data.get("amount") or 0)
@@ -127,35 +127,216 @@ def parse_wager_from_image(image_url: str) -> dict:
         amount = 0.0
 
     raw_legs = data.get("legs") or []
-    legs: list[dict] = []
+    legs: List[Dict[str, str]] = []
     for leg in raw_legs:
         if not isinstance(leg, dict):
             continue
-        leg_desc = str(leg.get("description") or "").strip()
-        if not leg_desc:
+        leg_description = str(leg.get("description") or "").strip()
+        if not leg_description:
             continue
         leg_status = str(leg.get("status") or "open").lower().strip()
         if leg_status not in {"open", "won", "lost"}:
             leg_status = "open"
-        legs.append({"description": leg_desc, "status": leg_status})
+        legs.append({"description": leg_description, "status": leg_status})
 
-    if not legs and desc:
-        legs.append({"description": desc, "status": "open"})
+    # Single straight bets shouldn't create a leg entry—keep legs for true multi-leg wagers only.
+    if len(legs) == 1:
+        legs = []
 
-    return {"description": desc, "amount": amount, "line": line, "legs": legs}
+    league_key = str(data.get("league_key") or data.get("league") or "").strip().lower()
+
+    def _team_dict(raw: Any) -> Dict[str, str]:
+        if raw is None:
+            return {}
+        if isinstance(raw, str):
+            return {"name": raw}
+        if isinstance(raw, dict):
+            return {k: v for k, v in raw.items() if isinstance(k, str) and v}
+        return {}
+
+    home_team = _team_dict(data.get("home_team"))
+    away_team = _team_dict(data.get("away_team"))
+
+    return {
+        "description": description,
+        "amount": amount,
+        "line": line,
+        "legs": legs,
+        "league_key": league_key,
+        "home_team": home_team,
+        "away_team": away_team,
+    }
 
 
-def create_wager(user_id: int, description: str, amount: float, line: str, legs: list[dict] | None = None) -> dict:
-    payload = {
+def _normalize_alias(value: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", value.lower())
+
+
+def _load_catalog(force: bool = False) -> None:
+    now = time.time()
+    if not force and now < _catalog_cache["expires"]:
+        return
+
+    leagues_resp = requests.get(f"{API_URL}/catalog/leagues", timeout=10)
+    leagues_resp.raise_for_status()
+    leagues = leagues_resp.json()
+
+    leagues_by_key: Dict[str, Dict[str, Any]] = {}
+    team_lookup: Dict[int, Dict[str, Dict[str, Any]]] = {}
+
+    for league in leagues:
+        league_id = league["id"]
+        key = (league.get("key") or "").lower()
+        if key:
+            leagues_by_key[key] = league
+
+        teams_resp = requests.get(
+            f"{API_URL}/catalog/teams",
+            params={"league_id": league_id},
+            timeout=10,
+        )
+        teams_resp.raise_for_status()
+        teams = teams_resp.json()
+
+        lookup: Dict[str, Dict[str, Any]] = {}
+        for team in teams:
+            aliases: List[str] = []
+            for field in (
+                "external_id",
+                "abbreviation",
+                "nickname",
+                "name",
+                "display_name",
+                "location",
+            ):
+                value = team.get(field)
+                if value:
+                    aliases.append(str(value))
+            if team.get("location") and team.get("nickname"):
+                aliases.append(f"{team['location']} {team['nickname']}")
+            if team.get("location") and team.get("name"):
+                aliases.append(f"{team['location']} {team['name']}")
+
+            for alias in aliases:
+                normalized = _normalize_alias(alias)
+                if normalized and normalized not in lookup:
+                    lookup[normalized] = team
+
+        team_lookup[league_id] = lookup
+
+    _catalog_cache.update(
+        {
+            "expires": now + CATALOG_TTL_SECONDS,
+            "leagues_by_key": leagues_by_key,
+            "team_lookup": team_lookup,
+        }
+    )
+
+
+def _resolve_team_id(league_key: str, team_data: Dict[str, str]) -> Optional[int]:
+    if not league_key or not team_data:
+        return None
+
+    _load_catalog()
+    league = _catalog_cache["leagues_by_key"].get(league_key.lower())
+    if not league:
+        return None
+
+    lookup = _catalog_cache["team_lookup"].get(league["id"], {})
+    candidates: List[str] = []
+
+    for field in (
+        "external_id",
+        "abbreviation",
+        "short_name",
+        "nickname",
+        "name",
+        "display_name",
+        "location",
+    ):
+        value = team_data.get(field)
+        if value:
+            candidates.append(str(value))
+    if team_data.get("location") and team_data.get("nickname"):
+        candidates.append(f"{team_data['location']} {team_data['nickname']}")
+    if team_data.get("location") and team_data.get("name"):
+        candidates.append(f"{team_data['location']} {team_data['name']}")
+
+    for candidate in candidates:
+        normalized = _normalize_alias(candidate)
+        team = lookup.get(normalized)
+        if team:
+            return team["id"]
+
+    for candidate in candidates:
+        normalized = _normalize_alias(candidate)
+        if not normalized:
+            continue
+        for alias, team in lookup.items():
+            if normalized in alias or alias in normalized:
+                return team["id"]
+
+    return None
+
+
+def resolve_matchup_ids(parsed: Dict[str, Any]) -> Tuple[Optional[Dict[str, int]], List[str]]:
+    notes: List[str] = []
+    league_key = parsed.get("league_key") or ""
+    if not league_key:
+        notes.append("league not identified")
+        return None, notes
+
+    if len(parsed.get("legs") or []) > 1:
+        notes.append("multiple legs — no single matchup")
+        return None, notes
+
+    home_id = _resolve_team_id(league_key, parsed.get("home_team") or {})
+    away_id = _resolve_team_id(league_key, parsed.get("away_team") or {})
+
+    missing: List[str] = []
+    if not home_id:
+        missing.append("home team")
+    if not away_id:
+        missing.append("away team")
+
+    if missing:
+        notes.append("could not map " + ", ".join(missing))
+        return None, notes
+
+    league = _catalog_cache["leagues_by_key"].get(league_key.lower())
+    if not league:
+        notes.append("league not in catalog")
+        return None, notes
+
+    matchup = {
+        "league_id": league["id"],
+        "home_team_id": home_id,
+        "away_team_id": away_id,
+    }
+
+    return matchup, notes
+
+
+def create_wager(
+    user_id: int,
+    description: str,
+    amount: float,
+    line: str,
+    legs: Optional[List[Dict[str, str]]] = None,
+    matchup: Optional[Dict[str, int]] = None,
+) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
         "user_id": user_id,
         "description": description,
         "amount": amount,
         "line": line,
-        "legs": legs or []
+        "legs": legs or [],
     }
-    r = requests.post(f"{API_URL}/wagers/", json=payload, timeout=10)
-    r.raise_for_status()
-    return r.json()
+    if matchup:
+        payload["matchup"] = matchup
+    response = requests.post(f"{API_URL}/wagers/", json=payload, timeout=10)
+    response.raise_for_status()
+    return response.json()
 
 
 @client.event
@@ -165,65 +346,65 @@ async def on_ready():
 
 @client.event
 async def on_message(message: discord.Message):
-    # Ignore self
     if message.author == client.user:
         return
 
-    # Only in #lv-raiders (or env override)
     if isinstance(message.channel, (discord.TextChannel, discord.Thread)) and getattr(message.channel, "name", "") != TARGET_CHANNEL:
         return
 
-    # Command: !track (must include image)
     if message.content.strip().lower().startswith("!track"):
-        # Require an attachment that is an image
         if not message.attachments:
             await message.channel.send("❌ Please attach a **screenshot** of the bet with the `!track` command.")
             return
 
-        img = None
-        for att in message.attachments:
-            # content_type can be None sometimes; also check file extension
-            ct = (att.content_type or "").lower()
-            if ("image" in ct) or att.filename.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
-                img = att
+        image = None
+        for attachment in message.attachments:
+            content_type = (attachment.content_type or "").lower()
+            if "image" in content_type or attachment.filename.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
+                image = attachment
                 break
 
-        if not img:
+        if not image:
             await message.channel.send("❌ I didn't find an image attachment. Please attach a screenshot (PNG/JPG).")
             return
 
         try:
-            # 1) Ensure user exists
             user_id = ensure_user_and_get_id(message.author)
-
             await message.channel.send("🧐 Reading your screenshot…")
 
-            # 2) Parse wager via OpenAI Vision
-            parsed = parse_wager_from_image(img.url)
-            desc = parsed["description"] or "Bet (screenshot)"
+            parsed = parse_wager_from_image(image.url)
+            description = parsed["description"] or "Bet (screenshot)"
             amount = float(parsed["amount"] or 0)
             line = parsed["line"] or ""
 
-            # 3) Create wager in your API
-            created = create_wager(user_id=user_id, description=desc, amount=amount, line=line, legs=parsed["legs"])
+            matchup, matchup_notes = resolve_matchup_ids(parsed)
+            _ = create_wager(
+                user_id=user_id,
+                description=description,
+                amount=amount,
+                line=line,
+                legs=parsed["legs"],
+                matchup=matchup,
+            )
 
-            # 4) Ack
             leg_lines = "\n".join(f"    - {leg['description']} ({leg['status']})" for leg in parsed["legs"])
             summary = (
-                f"**Tracked!**\n• **Desc:** {desc}\n"
+                f"**Tracked!**\n• **Desc:** {description}\n"
                 f"• **Amount:** ${amount:.2f}\n"
                 f"• **Line:** {line or '(unknown)'}"
             )
             if leg_lines:
                 summary += f"\n• **Legs:**\n{leg_lines}"
+            if matchup_notes:
+                summary += "\n• Matchup mapping: " + "; ".join(matchup_notes)
             if WEB_UI_URL:
                 summary += f"\nTracker UI: {WEB_UI_URL}"
             await message.channel.send(summary)
 
         except requests.HTTPError as http_err:
             await message.channel.send(f"❌ API error: {http_err.response.status_code} {http_err.response.text}")
-        except Exception as e:
-            await message.channel.send(f"❌ Sorry, I couldn't process that: `{e}`. Try again or post a clearer screenshot.")
+        except Exception as exc:
+            await message.channel.send(f"❌ Sorry, I couldn't process that: `{exc}`. Try again or post a clearer screenshot.")
 
 
 if __name__ == "__main__":

@@ -5,10 +5,12 @@ from .database import get_db, init_db
 from . import crud, models, schemas
 from .routers import wagers
 from .routers import users
+from .routers import catalog
 
 app = FastAPI()
 app.include_router(users.router)
 app.include_router(wagers.router)
+app.include_router(catalog.router)
 templates = Jinja2Templates(directory="app/templates")
 
 
@@ -20,7 +22,24 @@ async def startup():
 @app.get("/", response_class=HTMLResponse)
 async def read_dashboard(request: Request, db=Depends(get_db)):
     users = crud.get_users_with_wagers(db)
+    team_lookup = crud.build_team_alias_lookup(db)
+    for user in users:
+        for wager in user.wagers:
+            for leg in wager.legs:
+                leg.matched_teams = crud.match_leg_description_to_teams(leg.description, team_lookup)
     return templates.TemplateResponse("index.html", {"request": request, "users": users})
+
+
+@app.get("/catalog", response_class=HTMLResponse)
+async def view_catalog(request: Request, db=Depends(get_db)):
+    leagues = crud.get_leagues_with_catalog(db)
+    return templates.TemplateResponse(
+        "catalog.html",
+        {
+            "request": request,
+            "leagues": leagues,
+        },
+    )
 
 
 @app.post("/wagers/{wager_id}/status")
