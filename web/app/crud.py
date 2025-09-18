@@ -252,46 +252,90 @@ def _normalize_alias(value: str) -> str:
     return _alias_cleanup.sub("", value.lower())
 
 
-def build_team_alias_lookup(db: Session) -> dict[str, models.Team]:
+def build_team_alias_lookup(db: Session) -> list[dict[str, object]]:
     teams = db.query(models.Team).all()
-    lookup: dict[str, models.Team] = {}
-    for team in teams:
-        aliases: list[str] = []
-        for attr in (
-            "external_id",
-            "abbreviation",
-            "nickname",
-            "name",
-            "display_name",
-            "location",
-        ):
-            value = getattr(team, attr, None)
-            if value:
-                aliases.append(str(value))
-        if team.location and team.nickname:
-            aliases.append(f"{team.location} {team.nickname}")
-        if team.location and team.name:
-            aliases.append(f"{team.location} {team.name}")
+    entries: list[dict[str, object]] = []
 
-        for alias in aliases:
+    for team in teams:
+        seen: set[str] = set()
+
+        def add_alias(alias: str | None, *, strict: bool = False):
+            if not alias:
+                return
             normalized = _normalize_alias(alias)
             if len(normalized) < 3:
-                continue
-            lookup.setdefault(normalized, team)
-    return lookup
+                return
+            key = (team.id, normalized)
+            if key in seen:
+                return
+            seen.add(key)
+            entries.append(
+                {
+                    "team": team,
+                    "alias": alias,
+                    "normalized": normalized,
+                    "strict": strict,
+                }
+            )
+
+        add_alias(team.external_id, strict=True)
+        add_alias(team.abbreviation, strict=True)
+        add_alias(team.nickname)
+        add_alias(team.name)
+        add_alias(team.display_name)
+
+        if team.location and team.nickname:
+            add_alias(f"{team.location} {team.nickname}")
+        if team.location and team.name:
+            add_alias(f"{team.location} {team.name}")
+
+    return entries
 
 
-def match_leg_description_to_teams(description: str, lookup: dict[str, models.Team]) -> list[models.Team]:
+def match_leg_description_to_teams(description: str, aliases: list[dict[str, object]]) -> list[models.Team]:
     if not description:
         return []
+
     normalized_text = _normalize_alias(description)
     if not normalized_text:
         return []
 
-    matches: list[models.Team] = []
-    seen_ids: set[int] = set()
-    for alias, team in lookup.items():
-        if alias in normalized_text and team.id not in seen_ids:
-            matches.append(team)
-            seen_ids.add(team.id)
-    return matches
+    lower_text = description.lower()
+    best: dict[int, tuple[float, models.Team]] = {}
+
+    for entry in aliases:
+        team: models.Team = entry["team"]  # type: ignore[assignment]
+        normalized_alias: str = entry["normalized"]  # type: ignore[assignment]
+        alias_text: str = str(entry["alias"]).lower()
+        strict: bool = bool(entry["strict"])  # type: ignore[assignment]
+
+        if normalized_alias not in normalized_text:
+            continue
+
+        if strict:
+            pattern = rf"\b{re.escape(alias_text)}\b"
+            if not re.search(pattern, lower_text):
+                continue
+
+        score = len(normalized_alias)
+        if alias_text in lower_text:
+            score += 5
+
+        location = (team.location or "").lower()
+        if location and location in lower_text:
+            score += 3
+
+        nickname = (team.nickname or "").lower()
+        if nickname and nickname in lower_text:
+            score += 4
+
+        display = (team.display_name or "").lower()
+        if display and display in lower_text:
+            score += 6
+
+        current = best.get(team.id)
+        if not current or score > current[0]:
+            best[team.id] = (score, team)
+
+    ranked = sorted(best.values(), key=lambda item: item[0], reverse=True)
+    return [team for _, team in ranked[:2]]
