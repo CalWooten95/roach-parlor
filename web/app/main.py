@@ -1,6 +1,6 @@
 import json
 from decimal import Decimal
-from datetime import datetime
+from datetime import datetime, date
 from fastapi import FastAPI, Request, Depends, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -69,7 +69,8 @@ async def view_catalog(request: Request, db=Depends(get_db)):
 async def view_stats(request: Request, db=Depends(get_db)):
     users = crud.get_users_with_wagers(db)
     player_stats: list[dict[str, object]] = []
-    chart_datasets: list[dict[str, object]] = []
+    profit_datasets: list[dict[str, object]] = []
+    bet_datasets: list[dict[str, object]] = []
 
     for user in users:
         wagers = sorted(
@@ -81,8 +82,8 @@ async def view_stats(request: Request, db=Depends(get_db)):
         total_staked = Decimal("0")
         total_profit = Decimal("0")
         archived_count = 0
-        running_profit = Decimal("0")
-        points: list[dict[str, object]] = []
+        daily_profit: dict[date, Decimal] = {}
+        daily_bets: dict[date, int] = {}
 
         for wager in wagers:
             status = _normalize_wager_status(wager)
@@ -103,22 +104,19 @@ async def view_stats(request: Request, db=Depends(get_db)):
                 removed += 1
 
             profit_delta = _wager_profit_delta(wager)
-            if profit_delta != 0:
-                total_profit += profit_delta
-                running_profit += profit_delta
-                created_at = wager.created_at
-                if isinstance(created_at, str):
-                    try:
-                        created_at = datetime.fromisoformat(created_at)
-                    except ValueError:
-                        created_at = None
-                if created_at is not None:
-                    points.append(
-                        {
-                            "x": created_at.isoformat(),
-                            "y": float(running_profit),
-                        }
-                    )
+            total_profit += profit_delta
+
+            created_at = wager.created_at
+            if isinstance(created_at, str):
+                try:
+                    created_at = datetime.fromisoformat(created_at)
+                except ValueError:
+                    created_at = None
+
+            if created_at is not None:
+                day = created_at.date()
+                daily_bets[day] = daily_bets.get(day, 0) + 1
+                daily_profit[day] = daily_profit.get(day, Decimal("0")) + profit_delta
 
         decided = wins + losses
         win_rate = float((wins / decided) * 100) if decided else 0.0
@@ -138,16 +136,37 @@ async def view_stats(request: Request, db=Depends(get_db)):
             }
         )
 
-        if points:
-            chart_datasets.append(
+        if daily_profit:
+            sorted_days = sorted(daily_profit.keys())
+            profit_points = [
+                {"x": day.isoformat(), "y": float(daily_profit[day])}
+                for day in sorted_days
+            ]
+            profit_datasets.append(
                 {
                     "label": user.display_name or f"Player {user.id}",
-                    "data": points,
-                    "tension": 0.25,
+                    "data": profit_points,
+                    "tension": 0.2,
+                    "metric": "profit",
                 }
             )
 
-    chart_payload = json.dumps({"datasets": chart_datasets})
+        if daily_bets:
+            sorted_days = sorted(daily_bets.keys())
+            bet_points = [
+                {"x": day.isoformat(), "y": daily_bets[day]}
+                for day in sorted_days
+            ]
+            bet_datasets.append(
+                {
+                    "label": user.display_name or f"Player {user.id}",
+                    "data": bet_points,
+                    "tension": 0.2,
+                    "metric": "bets",
+                }
+            )
+
+    chart_payload = json.dumps({"profit": profit_datasets, "bets": bet_datasets})
 
     return templates.TemplateResponse(
         "stats.html",
@@ -155,7 +174,7 @@ async def view_stats(request: Request, db=Depends(get_db)):
             "request": request,
             "player_stats": player_stats,
             "chart_payload": chart_payload,
-            "has_chart": bool(chart_datasets),
+            "has_chart": bool(profit_datasets or bet_datasets),
         },
     )
 

@@ -39,8 +39,18 @@
   </table>
 </div>
 
-<h2 class="text-xl font-semibold mb-3">Profit Over Time</h2>
+<h2 class="text-xl font-semibold mb-3">Performance Over Time</h2>
 {% if has_chart %}
+<div class="flex items-center gap-2 mb-3">
+  <button type="button" data-chart="profit" aria-pressed="true"
+          class="chart-tab px-3 py-1.5 rounded-full text-sm font-medium bg-blue-600 text-white">
+    Profit / Loss
+  </button>
+  <button type="button" data-chart="bets" aria-pressed="false"
+          class="chart-tab px-3 py-1.5 rounded-full text-sm font-medium bg-gray-200 text-gray-700">
+    Bets Placed
+  </button>
+</div>
 <div class="bg-white rounded-xl shadow p-4">
   <canvas id="profit-chart" height="120"></canvas>
 </div>
@@ -49,20 +59,34 @@
 <script id="chart-data" type="application/json">{{ chart_payload | safe }}</script>
 <script>
   const chartDataElement = document.getElementById('chart-data');
-  const chartConfig = JSON.parse(chartDataElement.textContent);
+  const chartConfig = JSON.parse(chartDataElement.textContent || '{}');
+  const datasetsByKey = {
+    profit: chartConfig.profit || [],
+    bets: chartConfig.bets || [],
+  };
+  const palette = ['#2563eb', '#dc2626', '#16a34a', '#9333ea', '#f97316', '#0891b2'];
+
+  const prepareDatasets = (datasets) => datasets.map((dataset, index) => {
+    const color = dataset.borderColor || palette[index % palette.length];
+    return {
+      ...dataset,
+      borderWidth: 2,
+      fill: false,
+      pointRadius: 3,
+      borderColor: color,
+      backgroundColor: dataset.backgroundColor || color,
+    };
+  });
+
+  const defaultKey = datasetsByKey.profit.length ? 'profit' : 'bets';
   const context = document.getElementById('profit-chart').getContext('2d');
-  new Chart(context, {
+  const chart = new Chart(context, {
     type: 'line',
     data: {
-      datasets: chartConfig.datasets.map((dataset) => ({
-        ...dataset,
-        borderWidth: 2,
-        fill: false,
-        pointRadius: 3,
-        borderColor: dataset.borderColor || undefined,
-      })),
+      datasets: prepareDatasets(datasetsByKey[defaultKey] || []),
     },
     options: {
+      parsing: false,
       responsive: true,
       interaction: {
         mode: 'nearest',
@@ -73,6 +97,10 @@
           type: 'time',
           time: {
             tooltipFormat: 'PP',
+            unit: 'day',
+            displayFormats: {
+              day: 'MMM d',
+            },
           },
           title: {
             display: true,
@@ -80,10 +108,10 @@
           },
         },
         y: {
-          beginAtZero: true,
+          beginAtZero: defaultKey === 'bets',
           title: {
             display: true,
-            text: 'Cumulative Profit ($)',
+            text: defaultKey === 'bets' ? 'Bets Placed' : 'Daily Profit / Loss ($)',
           },
         },
       },
@@ -91,7 +119,10 @@
         tooltip: {
           callbacks: {
             label(context) {
-              const value = context.parsed.y || 0;
+              const value = context.parsed.y ?? 0;
+              if (context.dataset.metric === 'bets') {
+                return `${context.dataset.label}: ${value}`;
+              }
               return `${context.dataset.label}: $${value.toFixed(2)}`;
             },
           },
@@ -102,6 +133,31 @@
       },
     },
   });
+
+  const tabs = document.querySelectorAll('.chart-tab');
+  const activateTab = (key) => {
+    tabs.forEach((tab) => {
+      const isActive = tab.dataset.chart === key;
+      tab.classList.toggle('bg-blue-600', isActive);
+      tab.classList.toggle('text-white', isActive);
+      tab.classList.toggle('bg-gray-200', !isActive);
+      tab.classList.toggle('text-gray-700', !isActive);
+      tab.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+
+    chart.data.datasets = prepareDatasets(datasetsByKey[key] || []);
+    chart.options.scales.y.beginAtZero = key === 'bets';
+    chart.options.scales.y.title.text = key === 'bets'
+      ? 'Bets Placed'
+      : 'Daily Profit / Loss ($)';
+    chart.update();
+  };
+
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => activateTab(tab.dataset.chart));
+  });
+
+  activateTab(defaultKey);
 </script>
 {% else %}
 <p class="text-sm text-gray-500">No completed wagers yet—profit chart will appear once bets are graded.</p>
