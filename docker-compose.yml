@@ -9,16 +9,16 @@ services:
       - db
     environment:
       - DATABASE_URL=${DATABASE_URL}
-#  bot:
-#    build: ./bot
-#    environment:
-#      DISCORD_TOKEN: ${DISCORD_TOKEN}
-#      OPENAI_API_KEY: ${OPENAI_API_KEY}
-#      API_URL: ${API_URL}
-#      TARGET_CHANNEL: ${TARGET_CHANNEL}
-#      WEB_UI_URL: ${WEB_UI_URL}
-#    depends_on:
-#      - web
+  bot:
+    build: ./bot
+    environment:
+      DISCORD_TOKEN: ${DISCORD_TOKEN}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      API_URL: ${API_URL}
+      TARGET_CHANNEL: ${TARGET_CHANNEL}
+      WEB_UI_URL: ${WEB_UI_URL}
+    depends_on:
+      - web
   db:
     image: postgres:14
     restart: always
