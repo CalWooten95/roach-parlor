@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.orm import sessionmaker, declarative_base
 import os
 
@@ -21,3 +21,11 @@ def init_db():
     from . import models
 
     Base.metadata.create_all(bind=engine)
+
+    with engine.begin() as conn:
+        inspector = inspect(conn)
+        wager_columns = inspector.get_columns("wagers")
+        if not any(column["name"] == "archived" for column in wager_columns):
+            conn.execute(
+                text("ALTER TABLE wagers ADD COLUMN archived BOOLEAN NOT NULL DEFAULT FALSE")
+            )

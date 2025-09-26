@@ -1,5 +1,6 @@
 from decimal import Decimal, InvalidOperation
-from sqlalchemy import Column, Integer, String, ForeignKey, Text, Enum, DateTime, func, Numeric
+from sqlalchemy import Column, Integer, String, ForeignKey, Text, Enum, DateTime, func, Numeric, Boolean
+from sqlalchemy.sql import expression
 from sqlalchemy.orm import relationship
 from .database import Base
 import enum
@@ -120,6 +121,7 @@ class Wager(Base):
     line = Column(String)               # <-- And this
     image_url = Column(String, nullable=True)
     status = Column(Enum(WagerStatus), default=WagerStatus.open)
+    archived = Column(Boolean, default=False, nullable=False, server_default=expression.false())
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="wagers")

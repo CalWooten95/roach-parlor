@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Las Cucarachas Gambling Help Line</title>
 <script src="https://cdn.tailwindcss.com"></script>
+<style>
+details.collapsible summary { list-style: none; }
+details.collapsible summary::-webkit-details-marker { display: none; }
+details.collapsible .collapsible-chevron { transition: transform 0.2s ease; }
+details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
+</style>
 </head>
 <body class="bg-gray-100 min-h-screen">
 <nav class="bg-gray-800 text-white p-4 mb-6">
@@ -13,6 +19,7 @@
     <div class="flex items-center gap-4 text-sm">
       <a href="/" class="hover:underline">Dashboard</a>
       <a href="/catalog" class="hover:underline">League Catalog</a>
+      <a href="/archived" class="hover:underline">Archived Wagers</a>
     </div>
   </div>
 </nav>

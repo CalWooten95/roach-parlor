@@ -20,7 +20,7 @@ def _prepare_legs(wager: models.Wager, legs: list[dict]):
 
 # --- User Operations ---
 def get_users_with_wagers(db: Session):
-    return (
+    users = (
         db.query(models.User)
         .options(
             selectinload(models.User.wagers)
@@ -38,6 +38,14 @@ def get_users_with_wagers(db: Session):
         .order_by(models.User.display_name)
         .all()
     )
+
+    for user in users:
+        active = [wager for wager in user.wagers if not getattr(wager, "archived", False)]
+        archived = [wager for wager in user.wagers if getattr(wager, "archived", False)]
+        setattr(user, "active_wagers", active)
+        setattr(user, "archived_wagers", archived)
+
+    return users
 
 def get_user(db: Session, user_id: int):
     return db.query(models.User).filter(models.User.id == user_id).first()
@@ -65,13 +73,20 @@ def create_wager(
     line: str,
     legs: list[dict] | None = None,
     matchup: dict | None = None,
+    archived: bool = False,
 ):
     try:
         amount_value = Decimal(str(amount)).quantize(Decimal("0.01"))
     except (InvalidOperation, TypeError):
         amount_value = Decimal("0.00")
 
-    wager = models.Wager(user_id=user_id, description=description, amount=amount_value, line=line)
+    wager = models.Wager(
+        user_id=user_id,
+        description=description,
+        amount=amount_value,
+        line=line,
+        archived=archived,
+    )
     if legs:
         _prepare_legs(wager, legs)
     if matchup:
@@ -82,6 +97,17 @@ def create_wager(
             scheduled_at=matchup.get("scheduled_at"),
         )
     db.add(wager)
+    db.commit()
+    db.refresh(wager)
+    return wager
+
+
+def set_wager_archived(db: Session, wager_id: int, archived: bool):
+    wager = db.query(models.Wager).filter(models.Wager.id == wager_id).first()
+    if not wager:
+        return None
+
+    wager.archived = archived
     db.commit()
     db.refresh(wager)
     return wager

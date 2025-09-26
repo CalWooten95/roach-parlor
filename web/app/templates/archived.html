@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-4">Archived Wagers</h1>
+<p class="text-sm text-gray-600 mb-6">Archived wagers stay out of the dashboard but remain available here for reference.</p>
+
+<div class="space-y-4">
+  {% for user in users %}
+    {% if user.archived_wagers %}
+    <div class="bg-white rounded-xl shadow p-4">
+      <div class="flex items-center gap-3 mb-4">
+        <img src="{{ user.profile_pic_url }}" alt="{{ user.display_name }}" class="w-10 h-10 rounded-full">
+        <div>
+          <h2 class="text-xl font-semibold">{{ user.display_name }}</h2>
+          <p class="text-xs text-gray-500">{{ user.archived_wagers|length }} archived wager{{ '' if user.archived_wagers|length == 1 else 's' }}</p>
+        </div>
+      </div>
+
+      <div class="space-y-3">
+        {% for wager in user.archived_wagers %}
+        {% set status_icon = '—' %}
+        {% set status_color = 'text-gray-400' %}
+        {% if wager.status == 'won' %}
+          {% set status_icon = '✅' %}
+          {% set status_color = 'text-green-500' %}
+        {% elif wager.status == 'lost' %}
+          {% set status_icon = '❌' %}
+          {% set status_color = 'text-red-500' %}
+        {% endif %}
+        <details class="collapsible border rounded-xl px-4 py-3">
+          <summary class="flex items-center justify-between gap-3 cursor-pointer">
+            <div class="flex items-center gap-3">
+              <span class="text-2xl {{ status_color }}">{{ status_icon }}</span>
+              <div>
+                <p class="font-medium">{{ wager.description }}</p>
+                <p class="text-sm text-gray-600">Amount: ${{ '{:,.2f}'.format(wager.amount) }} | Line: {{ wager.line }}</p>
+                {% if wager.payout is not none %}
+                <p class="text-sm text-gray-600">Payout: ${{ '{:,.2f}'.format(wager.payout) }}</p>
+                {% endif %}
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <p class="text-xs text-gray-500">Status: {{ wager.status|upper }}</p>
+              <span class="collapsible-chevron text-gray-400 text-lg">▸</span>
+            </div>
+          </summary>
+
+          <div class="mt-4 space-y-3">
+            <form method="post" action="/wagers/{{ wager.id }}/archive" class="inline-block">
+              <input type="hidden" name="archived" value="false">
+              <input type="hidden" name="redirect_to" value="/archived">
+              <button class="bg-blue-500 text-white px-3 py-1 rounded-full text-sm hover:bg-blue-600">Restore to Dashboard</button>
+            </form>
+
+            {% if wager.matchup and (not wager.legs or wager.legs|length <= 1) %}
+            {% set home = wager.matchup.home_team %}
+            {% set away = wager.matchup.away_team %}
+            <div>
+              <div class="flex items-center gap-4 bg-gray-50 rounded-lg px-3 py-2">
+                <div class="flex items-center gap-2">
+                  {% if home and home.logo_url %}
+                  <img src="{{ home.logo_url }}" alt="{{ home.display_name or home.name }} logo" class="w-8 h-8 object-contain rounded-full border"/>
+                  {% else %}
+                  <span class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">—</span>
+                  {% endif %}
+                  <span class="font-semibold text-sm">{{ home.display_name or home.name if home else 'TBD' }}</span>
+                </div>
+                <span class="text-xs text-gray-500 uppercase tracking-wide">vs</span>
+                <div class="flex items-center gap-2">
+                  {% if away and away.logo_url %}
+                  <img src="{{ away.logo_url }}" alt="{{ away.display_name or away.name }} logo" class="w-8 h-8 object-contain rounded-full border"/>
+                  {% else %}
+                  <span class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">—</span>
+                  {% endif %}
+                  <span class="font-semibold text-sm">{{ away.display_name or away.name if away else 'TBD' }}</span>
+                </div>
+              </div>
+              {% if wager.matchup.league or wager.matchup.scheduled_at %}
+              <p class="text-xs text-gray-500 mt-1">
+                {% if wager.matchup.league %}
+                  {{ wager.matchup.league.display_name or wager.matchup.league.name }}
+                {% endif %}
+                {% if wager.matchup.scheduled_at %}
+                  · {{ wager.matchup.scheduled_at.strftime('%b %d, %I:%M %p') }}
+                {% endif %}
+              </p>
+              {% endif %}
+            </div>
+            {% endif %}
+
+            {% if wager.legs %}
+            <div class="space-y-2">
+              {% for leg in wager.legs %}
+              <div class="bg-gray-100 rounded-lg px-3 py-2">
+                <p class="text-sm font-medium text-gray-800">{{ leg.description }}</p>
+                {% if leg.matched_teams %}
+                <div class="flex items-center gap-2 mt-1">
+                  {% for team in leg.matched_teams %}
+                  <div class="flex items-center gap-1">
+                    {% if team.logo_url %}
+                    <img src="{{ team.logo_url }}" alt="{{ team.display_name }} logo" class="w-6 h-6 rounded-full object-contain border"/>
+                    {% endif %}
+                    <span class="text-xs text-gray-600">{{ team.display_name }}</span>
+                  </div>
+                  {% endfor %}
+                </div>
+                {% endif %}
+                <span class="text-xs font-semibold px-2 py-0.5 rounded-full
+                  {% if leg.status == 'won' %} bg-green-500 text-white
+                  {% elif leg.status == 'lost' %} bg-red-500 text-white
+                  {% else %} bg-blue-500 text-white {% endif %}">
+                  {{ leg.status|upper }}
+                </span>
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+        </details>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  {% endfor %}
+
+  {% if not has_archived %}
+  <p class="text-sm text-gray-500">No archived wagers yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

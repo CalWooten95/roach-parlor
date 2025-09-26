@@ -70,6 +70,7 @@ class WagerCreate(BaseModel):
     line: str
     legs: list[WagerLegPayload] | None = None
     matchup: WagerMatchupPayload | None = None
+    archived: bool | None = False
 
 
 class WagerOut(BaseModel):
@@ -79,6 +80,7 @@ class WagerOut(BaseModel):
     amount: float
     line: str
     status: str
+    archived: bool
     payout: float | None = None
     legs: list[WagerLegOut] = Field(default_factory=list)
     matchup: WagerMatchupOut | None = None
@@ -102,6 +104,7 @@ def create_wager(wager: WagerCreate, db: Session = Depends(database.get_db)):
         line=wager.line,
         legs=legs,
         matchup=matchup,
+        archived=bool(wager.archived),
     )
 
 
@@ -116,6 +119,14 @@ def list_user_wagers(user_id: int, db: Session = Depends(database.get_db)):
 @router.patch("/{wager_id}/status", response_model=WagerOut)
 def update_status(wager_id: int, status: str, db: Session = Depends(database.get_db)):
     wager = crud.update_wager_status(db, wager_id, status)
+    if not wager:
+        raise HTTPException(status_code=404, detail="Wager not found")
+    return wager
+
+
+@router.patch("/{wager_id}/archive", response_model=WagerOut)
+def update_archive_state(wager_id: int, archived: bool, db: Session = Depends(database.get_db)):
+    wager = crud.set_wager_archived(db, wager_id, archived)
     if not wager:
         raise HTTPException(status_code=404, detail="Wager not found")
     return wager

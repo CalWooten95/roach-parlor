@@ -128,6 +128,7 @@ class WagerBase(BaseModel):
     description: str
     image_url: Optional[str]
     status: Optional[str] = "open"
+    archived: Optional[bool] = False
     legs: List[WagerLeg] = Field(default_factory=list)
 
 
