@@ -31,6 +31,7 @@
           <!-- Description + Amount/Line + Action Buttons -->
           <div>
             <p class="font-medium">{{ wager.description }}</p>
+            <p class="text-xs text-gray-500">Placed {{ wager.created_at.strftime('%b %d, %Y') if wager.created_at else '—' }}</p>
             <p class="text-sm text-gray-600">Amount: ${{ '{:,.2f}'.format(wager.amount) }} | Line: {{ wager.line }}</p>
             {% if wager.payout is not none %}
             <p class="text-sm text-gray-600">Payout: ${{ '{:,.2f}'.format(wager.payout) }}</p>
