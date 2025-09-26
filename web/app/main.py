@@ -1,3 +1,6 @@
+import json
+from decimal import Decimal
+from datetime import datetime
 from fastapi import FastAPI, Request, Depends, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -12,6 +15,25 @@ app.include_router(users.router)
 app.include_router(wagers.router)
 app.include_router(catalog.router)
 templates = Jinja2Templates(directory="app/templates")
+
+
+def _normalize_wager_status(wager: models.Wager) -> str:
+    status = wager.status
+    if isinstance(status, models.WagerStatus):
+        return status.value
+    return str(status)
+
+
+def _wager_profit_delta(wager: models.Wager) -> Decimal:
+    amount_raw = wager.amount if wager.amount is not None else Decimal("0")
+    amount = Decimal(str(amount_raw))
+    status = _normalize_wager_status(wager)
+    if status == models.WagerStatus.won.value:
+        payout = wager.payout or 0
+        return Decimal(str(payout))
+    if status == models.WagerStatus.lost.value:
+        return -amount
+    return Decimal("0")
 
 
 @app.on_event("startup")
@@ -39,6 +61,101 @@ async def view_catalog(request: Request, db=Depends(get_db)):
         {
             "request": request,
             "leagues": leagues,
+        },
+    )
+
+
+@app.get("/stats", response_class=HTMLResponse)
+async def view_stats(request: Request, db=Depends(get_db)):
+    users = crud.get_users_with_wagers(db)
+    player_stats: list[dict[str, object]] = []
+    chart_datasets: list[dict[str, object]] = []
+
+    for user in users:
+        wagers = sorted(
+            user.wagers,
+            key=lambda wager: (wager.created_at or datetime.min),
+        )
+
+        wins = losses = open_count = removed = 0
+        total_staked = Decimal("0")
+        total_profit = Decimal("0")
+        archived_count = 0
+        running_profit = Decimal("0")
+        points: list[dict[str, object]] = []
+
+        for wager in wagers:
+            status = _normalize_wager_status(wager)
+            amount_raw = wager.amount if wager.amount is not None else Decimal("0")
+            amount = Decimal(str(amount_raw))
+            total_staked += amount
+
+            if getattr(wager, "archived", False):
+                archived_count += 1
+
+            if status == models.WagerStatus.won.value:
+                wins += 1
+            elif status == models.WagerStatus.lost.value:
+                losses += 1
+            elif status == models.WagerStatus.open.value:
+                open_count += 1
+            elif status == models.WagerStatus.removed.value:
+                removed += 1
+
+            profit_delta = _wager_profit_delta(wager)
+            if profit_delta != 0:
+                total_profit += profit_delta
+                running_profit += profit_delta
+                created_at = wager.created_at
+                if isinstance(created_at, str):
+                    try:
+                        created_at = datetime.fromisoformat(created_at)
+                    except ValueError:
+                        created_at = None
+                if created_at is not None:
+                    points.append(
+                        {
+                            "x": created_at.isoformat(),
+                            "y": float(running_profit),
+                        }
+                    )
+
+        decided = wins + losses
+        win_rate = float((wins / decided) * 100) if decided else 0.0
+
+        player_stats.append(
+            {
+                "user": user,
+                "total": len(wagers),
+                "wins": wins,
+                "losses": losses,
+                "open": open_count,
+                "removed": removed,
+                "archived": archived_count,
+                "staked": float(total_staked),
+                "profit": float(total_profit),
+                "win_rate": win_rate,
+            }
+        )
+
+        if points:
+            chart_datasets.append(
+                {
+                    "label": user.display_name or f"Player {user.id}",
+                    "data": points,
+                    "tension": 0.25,
+                }
+            )
+
+    chart_payload = json.dumps({"datasets": chart_datasets})
+
+    return templates.TemplateResponse(
+        "stats.html",
+        {
+            "request": request,
+            "player_stats": player_stats,
+            "chart_payload": chart_payload,
+            "has_chart": bool(chart_datasets),
         },
     )
 

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-4">Player Performance</h1>
+<p class="text-sm text-gray-600 mb-6">Overall record and profitability for each player based on finished wagers.</p>
+
+<div class="overflow-x-auto bg-white rounded-xl shadow mb-8">
+  <table class="min-w-full divide-y divide-gray-200 text-sm">
+    <thead class="bg-gray-50">
+      <tr>
+        <th class="px-4 py-3 text-left font-semibold text-gray-700">Player</th>
+        <th class="px-4 py-3 text-right font-semibold text-gray-700">Wagers</th>
+        <th class="px-4 py-3 text-right font-semibold text-gray-700">Wins</th>
+        <th class="px-4 py-3 text-right font-semibold text-gray-700">Losses</th>
+        <th class="px-4 py-3 text-right font-semibold text-gray-700">Open</th>
+        <th class="px-4 py-3 text-right font-semibold text-gray-700">Archived</th>
+        <th class="px-4 py-3 text-right font-semibold text-gray-700">Win %</th>
+        <th class="px-4 py-3 text-right font-semibold text-gray-700">Staked</th>
+        <th class="px-4 py-3 text-right font-semibold text-gray-700">Profit</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-100">
+      {% for stat in player_stats %}
+      <tr>
+        <td class="px-4 py-3 font-medium text-gray-900 flex items-center gap-3">
+          <img src="{{ stat.user.profile_pic_url }}" alt="{{ stat.user.display_name }}" class="w-8 h-8 rounded-full">
+          <span>{{ stat.user.display_name }}</span>
+        </td>
+        <td class="px-4 py-3 text-right text-gray-700">{{ stat.total }}</td>
+        <td class="px-4 py-3 text-right text-green-600 font-semibold">{{ stat.wins }}</td>
+        <td class="px-4 py-3 text-right text-red-500 font-semibold">{{ stat.losses }}</td>
+        <td class="px-4 py-3 text-right text-gray-600">{{ stat.open }}</td>
+        <td class="px-4 py-3 text-right text-gray-600">{{ stat.archived }}</td>
+        <td class="px-4 py-3 text-right text-gray-700">{{ '{:.1f}%'.format(stat.win_rate) }}</td>
+        <td class="px-4 py-3 text-right text-gray-700">${{ '{:,.2f}'.format(stat.staked) }}</td>
+        <td class="px-4 py-3 text-right font-semibold {{ 'text-green-600' if stat.profit >= 0 else 'text-red-500' }}">${{ '{:,.2f}'.format(stat.profit) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2 class="text-xl font-semibold mb-3">Profit Over Time</h2>
+{% if has_chart %}
+<div class="bg-white rounded-xl shadow p-4">
+  <canvas id="profit-chart" height="120"></canvas>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+<script id="chart-data" type="application/json">{{ chart_payload | safe }}</script>
+<script>
+  const chartDataElement = document.getElementById('chart-data');
+  const chartConfig = JSON.parse(chartDataElement.textContent);
+  const context = document.getElementById('profit-chart').getContext('2d');
+  new Chart(context, {
+    type: 'line',
+    data: {
+      datasets: chartConfig.datasets.map((dataset) => ({
+        ...dataset,
+        borderWidth: 2,
+        fill: false,
+        pointRadius: 3,
+        borderColor: dataset.borderColor || undefined,
+      })),
+    },
+    options: {
+      responsive: true,
+      interaction: {
+        mode: 'nearest',
+        intersect: false,
+      },
+      scales: {
+        x: {
+          type: 'time',
+          time: {
+            tooltipFormat: 'PP',
+          },
+          title: {
+            display: true,
+            text: 'Date',
+          },
+        },
+        y: {
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: 'Cumulative Profit ($)',
+          },
+        },
+      },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label(context) {
+              const value = context.parsed.y || 0;
+              return `${context.dataset.label}: $${value.toFixed(2)}`;
+            },
+          },
+        },
+        legend: {
+          position: 'bottom',
+        },
+      },
+    },
+  });
+</script>
+{% else %}
+<p class="text-sm text-gray-500">No completed wagers yet—profit chart will appear once bets are graded.</p>
+{% endif %}
+{% endblock %}
