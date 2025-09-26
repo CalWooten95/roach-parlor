@@ -1,6 +1,6 @@
 import json
 from decimal import Decimal
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from fastapi import FastAPI, Request, Depends, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -137,11 +137,14 @@ async def view_stats(request: Request, db=Depends(get_db)):
         )
 
         if daily_profit:
-            sorted_days = sorted(daily_profit.keys())
-            profit_points = [
-                {"x": day.isoformat(), "y": float(daily_profit[day])}
-                for day in sorted_days
-            ]
+            today = date.today()
+            start_day = today - timedelta(days=29)
+            profit_points: list[dict[str, object]] = []
+            current_day = start_day
+            while current_day <= today:
+                value = float(daily_profit.get(current_day, Decimal("0")))
+                profit_points.append({"x": current_day.isoformat(), "y": value})
+                current_day += timedelta(days=1)
             profit_datasets.append(
                 {
                     "label": user.display_name or f"Player {user.id}",
@@ -152,11 +155,14 @@ async def view_stats(request: Request, db=Depends(get_db)):
             )
 
         if daily_bets:
-            sorted_days = sorted(daily_bets.keys())
-            bet_points = [
-                {"x": day.isoformat(), "y": daily_bets[day]}
-                for day in sorted_days
-            ]
+            today = date.today()
+            start_day = today - timedelta(days=29)
+            bet_points: list[dict[str, object]] = []
+            current_day = start_day
+            while current_day <= today:
+                value = daily_bets.get(current_day, 0)
+                bet_points.append({"x": current_day.isoformat(), "y": value})
+                current_day += timedelta(days=1)
             bet_datasets.append(
                 {
                     "label": user.display_name or f"Player {user.id}",
