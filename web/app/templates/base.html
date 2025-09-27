@@ -14,6 +14,16 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
 
 #blackjack-widget {
   box-shadow: 0 10px 25px rgba(15, 23, 42, 0.15);
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.blackjack-collapsed {
+  transform: translateY(20px);
+  opacity: 0.35;
+}
+
+#blackjack-widget.blackjack-collapsed .blackjack-body {
+  display: none;
 }
 
 .blackjack-section {
@@ -155,48 +165,53 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
 <main class="container mx-auto px-4">
 {% block content %}{% endblock %}
 </main>
-<div id="blackjack-widget" class="fixed bottom-4 right-4 w-72 bg-white rounded-2xl border border-gray-200 p-4 text-sm">
+<div id="blackjack-widget" class="fixed bottom-4 right-4 w-72 bg-white rounded-2xl border border-gray-200 p-4 text-sm blackjack-collapsed">
   <div class="flex items-center justify-between mb-3">
-    <h2 class="text-base font-semibold">Mini Blackjack</h2>
+    <div class="flex items-center gap-2">
+      <button id="blackjack-toggle" title="Toggle blackjack" class="text-xs bg-slate-200 text-slate-700 px-2 py-1 rounded hover:bg-slate-300">+</button>
+      <h2 class="text-base font-semibold">Mini Blackjack</h2>
+    </div>
     <button id="blackjack-new" class="text-xs bg-gray-900 text-white px-3 py-1 rounded hover:bg-gray-700">Deal</button>
   </div>
-  <div class="blackjack-section">
-    <h3 class="text-xs uppercase tracking-wide text-gray-500 mb-1">Dealer</h3>
-    <div id="blackjack-dealer-cards" class="blackjack-cards"></div>
-    <p id="blackjack-dealer-score" class="text-xs text-gray-500 mt-1"></p>
-  </div>
-  <div class="blackjack-section">
-    <h3 class="text-xs uppercase tracking-wide text-gray-500 mb-1">Player</h3>
-    <div id="blackjack-player-hands" class="space-y-2"></div>
-  </div>
-  <div class="blackjack-section border-t border-gray-200 pt-2 mt-2">
-    <div class="flex items-center justify-between text-xs text-gray-600 mb-2">
-      <span>Bankroll: <strong>$<span id="blackjack-bankroll">100</span></strong></span>
-      <span>Bet: <strong>$<span id="blackjack-current-bet">0</span></strong></span>
+  <div class="blackjack-body space-y-4">
+    <div class="blackjack-section">
+      <h3 class="text-xs uppercase tracking-wide text-gray-500 mb-1">Dealer</h3>
+      <div id="blackjack-dealer-cards" class="blackjack-cards"></div>
+      <p id="blackjack-dealer-score" class="text-xs text-gray-500 mt-1"></p>
     </div>
-    <div id="blackjack-bet-area" class="border-2 border-dashed border-slate-300 rounded-xl p-3 text-center cursor-pointer hover:border-slate-500 transition-colors mb-3">
-      <p class="text-xs text-gray-600">Click to drop your selected chip.</p>
-      <div id="blackjack-active-chip-display" class="text-xs text-gray-500 mt-1"></div>
-      <div id="blackjack-bet-chips" class="flex flex-wrap justify-center gap-1 text-xs text-gray-700 mt-2"></div>
+    <div class="blackjack-section">
+      <h3 class="text-xs uppercase tracking-wide text-gray-500 mb-1">Player</h3>
+      <div id="blackjack-player-hands" class="space-y-2"></div>
     </div>
-    <div class="flex items-center justify-between text-xs text-gray-600 mb-1">
-      <span>Select a chip</span>
-      <button id="blackjack-clear-bet" class="bg-slate-200 text-slate-700 rounded-full px-3 py-1 text-xs">Clear</button>
+    <div class="blackjack-section border-t border-gray-200 pt-2 mt-2">
+      <div class="flex items-center justify-between text-xs text-gray-600 mb-2">
+        <span>Bankroll: <strong>$<span id="blackjack-bankroll">100</span></strong></span>
+        <span>Bet: <strong>$<span id="blackjack-current-bet">0</span></strong></span>
+      </div>
+      <div id="blackjack-bet-area" class="border-2 border-dashed border-slate-300 rounded-xl p-3 text-center cursor-pointer hover:border-slate-500 transition-colors mb-3">
+        <p class="text-xs text-gray-600">Click to drop your selected chip.</p>
+        <div id="blackjack-active-chip-display" class="text-xs text-gray-500 mt-1"></div>
+        <div id="blackjack-bet-chips" class="flex flex-wrap justify-center gap-1 text-xs text-gray-700 mt-2"></div>
+      </div>
+      <div class="flex items-center justify-between text-xs text-gray-600 mb-1">
+        <span>Select a chip</span>
+        <button id="blackjack-clear-bet" class="bg-slate-200 text-slate-700 rounded-full px-3 py-1 text-xs">Clear</button>
+      </div>
+      <div class="flex flex-wrap gap-3" id="blackjack-chip-tray">
+        <button class="blackjack-chip chip-red" data-amount="5">$5</button>
+        <button class="blackjack-chip chip-blue" data-amount="10">$10</button>
+        <button class="blackjack-chip chip-green" data-amount="25">$25</button>
+        <button class="blackjack-chip chip-orange" data-amount="50">$50</button>
+        <button class="blackjack-chip chip-black" data-amount="100">$100</button>
+      </div>
     </div>
-    <div class="flex flex-wrap gap-3" id="blackjack-chip-tray">
-      <button class="blackjack-chip chip-red" data-amount="5">$5</button>
-      <button class="blackjack-chip chip-blue" data-amount="10">$10</button>
-      <button class="blackjack-chip chip-green" data-amount="25">$25</button>
-      <button class="blackjack-chip chip-orange" data-amount="50">$50</button>
-      <button class="blackjack-chip chip-black" data-amount="100">$100</button>
+    <p id="blackjack-message" class="text-xs text-gray-600 min-h-[2rem]"></p>
+    <div class="blackjack-buttons flex flex-wrap gap-2 mt-2">
+      <button id="blackjack-hit" class="flex-1 bg-emerald-500 text-white rounded px-3 py-1 text-xs hover:bg-emerald-600">Hit</button>
+      <button id="blackjack-stand" class="flex-1 bg-blue-500 text-white rounded px-3 py-1 text-xs hover:bg-blue-600">Stand</button>
+      <button id="blackjack-double" class="flex-1 bg-orange-500 text-white rounded px-3 py-1 text-xs hover:bg-orange-600">Double</button>
+      <button id="blackjack-split" class="flex-1 bg-purple-500 text-white rounded px-3 py-1 text-xs hover:bg-purple-600">Split</button>
     </div>
-  </div>
-  <p id="blackjack-message" class="text-xs text-gray-600 min-h-[2rem]"></p>
-  <div class="blackjack-buttons flex flex-wrap gap-2 mt-2">
-    <button id="blackjack-hit" class="flex-1 bg-emerald-500 text-white rounded px-3 py-1 text-xs hover:bg-emerald-600">Hit</button>
-    <button id="blackjack-stand" class="flex-1 bg-blue-500 text-white rounded px-3 py-1 text-xs hover:bg-blue-600">Stand</button>
-    <button id="blackjack-double" class="flex-1 bg-orange-500 text-white rounded px-3 py-1 text-xs hover:bg-orange-600">Double</button>
-    <button id="blackjack-split" class="flex-1 bg-purple-500 text-white rounded px-3 py-1 text-xs hover:bg-purple-600">Split</button>
   </div>
 </div>
 <script>
@@ -243,6 +258,8 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
     const betArea = document.getElementById('blackjack-bet-area');
     const betChipsEl = document.getElementById('blackjack-bet-chips');
     const activeChipDisplay = document.getElementById('blackjack-active-chip-display');
+    const widget = document.getElementById('blackjack-widget');
+    const toggleButton = document.getElementById('blackjack-toggle');
 
     if (!newGameButton || !hitButton) {
       return;
@@ -260,6 +277,7 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
       baseBet: 0,
       betChips: [],
       selectedChip: null,
+      collapsed: true,
     };
 
     function createDeck() {
@@ -570,6 +588,13 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
       bankrollEl.textContent = formatCurrency(state.bankroll);
       currentBetEl.textContent = formatCurrency(state.baseBet);
       updateButtons();
+      if (widget) {
+        widget.classList.toggle('blackjack-collapsed', state.collapsed);
+      }
+      if (toggleButton) {
+        toggleButton.textContent = state.collapsed ? '+' : '−';
+        toggleButton.setAttribute('aria-expanded', (!state.collapsed).toString());
+      }
     }
 
     function setFinished() {
@@ -801,6 +826,13 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
 
     if (betArea) {
       betArea.addEventListener('click', handleBetAreaClick);
+    }
+
+    if (toggleButton) {
+      toggleButton.addEventListener('click', () => {
+        state.collapsed = !state.collapsed;
+        updateUI();
+      });
     }
 
     updateUI();
