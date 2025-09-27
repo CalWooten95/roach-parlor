@@ -154,6 +154,47 @@ def delete_wager(db: Session, wager_id: int):
     return wager
 
 
+def update_wager_details(
+    db: Session,
+    wager_id: int,
+    *,
+    description: str | None = None,
+    amount: float | str | None = None,
+    line: str | None = None,
+    status: str | None = None,
+    archived: bool | None = None,
+):
+    wager = db.query(models.Wager).filter(models.Wager.id == wager_id).first()
+    if not wager:
+        return None
+
+    if description is not None:
+        wager.description = description
+
+    if amount is not None:
+        try:
+            amount_value = Decimal(str(amount)).quantize(Decimal("0.01"))
+            wager.amount = amount_value
+        except (InvalidOperation, TypeError):
+            pass
+
+    if line is not None:
+        wager.line = line
+
+    if status is not None:
+        try:
+            wager.status = models.WagerStatus(status)
+        except ValueError:
+            pass
+
+    if archived is not None:
+        wager.archived = bool(archived)
+
+    db.commit()
+    db.refresh(wager)
+    return wager
+
+
 # --- League / Team / Player Operations ---
 
 

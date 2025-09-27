@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between mb-6">
+  <div>
+    <h1 class="text-2xl font-bold">Admin Wager Dashboard</h1>
+    <p class="text-sm text-gray-600">Review, update, or remove any wager in the system.</p>
+  </div>
+  <form method="post" action="/admin/logout" class="self-start">
+    <button class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300">Sign out</button>
+  </form>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
+  <div class="bg-white shadow rounded-xl p-4">
+    <p class="text-xs uppercase text-gray-500">Total wagers</p>
+    <p class="text-2xl font-bold">{{ total_wagers }}</p>
+  </div>
+  <div class="bg-white shadow rounded-xl p-4">
+    <p class="text-xs uppercase text-gray-500">Archived</p>
+    <p class="text-2xl font-bold">{{ archived_count }}</p>
+  </div>
+  {% for status, count in status_counts.items() %}
+  <div class="bg-white shadow rounded-xl p-4">
+    <p class="text-xs uppercase text-gray-500">{{ status|replace('_', ' ') }}</p>
+    <p class="text-2xl font-bold">{{ count }}</p>
+  </div>
+  {% endfor %}
+</div>
+
+{% if not total_wagers %}
+<p class="text-sm text-gray-500">No wagers recorded yet.</p>
+{% endif %}
+
+<div class="space-y-6">
+  {% for user in users %}
+    {% if user.all_wagers_admin %}
+    <section class="bg-white shadow rounded-2xl p-6">
+      <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
+        <div class="flex items-center gap-3">
+          <img src="{{ user.profile_pic_url }}" alt="{{ user.display_name }}" class="w-12 h-12 rounded-full border">
+          <div>
+            <h2 class="text-xl font-semibold">{{ user.display_name }}</h2>
+            <p class="text-xs text-gray-500">User ID: {{ user.id }}</p>
+          </div>
+        </div>
+        <p class="text-sm text-gray-500">{{ user.all_wagers_admin|length }} wager{{ '' if user.all_wagers_admin|length == 1 else 's' }}</p>
+      </div>
+
+      <div class="space-y-3">
+        {% for wager in user.all_wagers_admin %}
+        {% set amount_value = wager.amount if wager.amount is not none else 0 %}
+        {% set status = wager.status.value if wager.status is not string else wager.status %}
+        <details class="border rounded-xl">
+          <summary class="cursor-pointer px-4 py-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p class="font-semibold">#{{ wager.id }} · {{ wager.description }}</p>
+              <p class="text-xs text-gray-500">
+                Created {{ wager.created_at.strftime('%b %d, %Y %I:%M %p') if wager.created_at else '—' }} · Amount ${{ '{:,.2f}'.format(amount_value) }} · Line {{ wager.line or '—' }}
+              </p>
+            </div>
+            <div class="flex items-center gap-3 text-sm">
+              <span class="px-3 py-1 rounded-full {% if status == 'won' %}bg-green-100 text-green-700{% elif status == 'lost' %}bg-red-100 text-red-700{% elif status == 'removed' %}bg-gray-200 text-gray-700{% else %}bg-blue-100 text-blue-700{% endif %}">
+                {{ status|upper }}
+              </span>
+              <span class="px-3 py-1 rounded-full {% if wager.archived %}bg-yellow-100 text-yellow-700{% else %}bg-gray-100 text-gray-600{% endif %}">
+                {{ 'ARCHIVED' if wager.archived else 'ACTIVE' }}
+              </span>
+            </div>
+          </summary>
+
+          <div class="px-4 pb-4 pt-2 space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-600">
+              <p><span class="font-semibold text-gray-700">User:</span> {{ user.display_name }} (ID {{ user.id }})</p>
+              <p><span class="font-semibold text-gray-700">Wager ID:</span> {{ wager.id }}</p>
+              <p><span class="font-semibold text-gray-700">Line:</span> {{ wager.line or '—' }}</p>
+              <p><span class="font-semibold text-gray-700">Amount:</span> ${{ '{:,.2f}'.format(amount_value) }}</p>
+              <p><span class="font-semibold text-gray-700">Payout:</span> {% if wager.payout is not none %}${{ '{:,.2f}'.format(wager.payout) }}{% else %}—{% endif %}</p>
+              <p><span class="font-semibold text-gray-700">Created:</span> {{ wager.created_at.strftime('%Y-%m-%d %H:%M') if wager.created_at else '—' }}</p>
+            </div>
+
+            {% if wager.matchup %}
+            {% set home = wager.matchup.home_team %}
+            {% set away = wager.matchup.away_team %}
+            <div class="bg-gray-50 rounded-xl p-3">
+              <p class="text-xs uppercase text-gray-500 mb-2">Matchup</p>
+              <div class="flex flex-col gap-2 md:flex-row md:items-center md:gap-4">
+                <div class="flex items-center gap-2">
+                  {% if home and home.logo_url %}
+                  <img src="{{ home.logo_url }}" alt="{{ home.display_name or home.name }}" class="w-8 h-8 rounded-full border object-contain">
+                  {% endif %}
+                  <span class="font-medium">{{ home.display_name or home.name if home else 'TBD' }}</span>
+                </div>
+                <span class="text-xs uppercase tracking-wide text-gray-500">vs</span>
+                <div class="flex items-center gap-2">
+                  {% if away and away.logo_url %}
+                  <img src="{{ away.logo_url }}" alt="{{ away.display_name or away.name }}" class="w-8 h-8 rounded-full border object-contain">
+                  {% endif %}
+                  <span class="font-medium">{{ away.display_name or away.name if away else 'TBD' }}</span>
+                </div>
+              </div>
+              <p class="text-xs text-gray-500 mt-2">
+                {% if wager.matchup.league %}
+                  {{ wager.matchup.league.display_name or wager.matchup.league.name }}
+                {% endif %}
+                {% if wager.matchup.scheduled_at %}
+                  · {{ wager.matchup.scheduled_at.strftime('%b %d, %I:%M %p') }}
+                {% endif %}
+              </p>
+            </div>
+            {% endif %}
+
+            {% if wager.legs %}
+            <div class="space-y-2">
+              <p class="text-xs uppercase text-gray-500">Legs</p>
+              {% for leg in wager.legs %}
+              <div class="border rounded-lg p-3">
+                <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p class="text-sm font-medium text-gray-800">{{ leg.description }}</p>
+                    {% if leg.matched_teams %}
+                    <div class="flex flex-wrap gap-2 mt-1">
+                      {% for team in leg.matched_teams %}
+                      <span class="inline-flex items-center gap-1 bg-gray-100 text-gray-700 rounded-full px-2 py-0.5 text-xs">
+                        {% if team.logo_url %}
+                        <img src="{{ team.logo_url }}" alt="{{ team.display_name }}" class="w-4 h-4 rounded-full object-contain">
+                        {% endif %}
+                        {{ team.display_name }}
+                      </span>
+                      {% endfor %}
+                    </div>
+                    {% endif %}
+                  </div>
+                  <form method="post" action="/wagers/{{ wager.id }}/legs/{{ leg.id }}/status" class="flex items-center gap-2">
+                    <input type="hidden" name="redirect_to" value="{{ current_url }}">
+                    <button name="status" value="open" class="px-2 py-1 rounded-full bg-blue-100 text-blue-700 text-xs">Open</button>
+                    <button name="status" value="won" class="px-2 py-1 rounded-full bg-green-100 text-green-700 text-xs">Won</button>
+                    <button name="status" value="lost" class="px-2 py-1 rounded-full bg-red-100 text-red-700 text-xs">Lost</button>
+                  </form>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
+
+            <div class="flex flex-wrap gap-3">
+              <form method="post" action="/wagers/{{ wager.id }}/status" class="flex gap-2 flex-wrap">
+                <input type="hidden" name="redirect_to" value="{{ current_url }}">
+                <button name="status" value="open" class="px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs">Mark Open</button>
+                <button name="status" value="won" class="px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs">Mark Won</button>
+                <button name="status" value="lost" class="px-3 py-1 rounded-full bg-red-100 text-red-700 text-xs">Mark Lost</button>
+                <button name="status" value="removed" onclick="return confirm('Remove this wager from regular views?')" class="px-3 py-1 rounded-full bg-gray-200 text-gray-700 text-xs">Mark Removed</button>
+              </form>
+
+              <form method="post" action="/wagers/{{ wager.id }}/archive">
+                <input type="hidden" name="redirect_to" value="{{ current_url }}">
+                {% if wager.archived %}
+                <input type="hidden" name="archived" value="false">
+                <button class="px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs">Restore</button>
+                {% else %}
+                <input type="hidden" name="archived" value="true">
+                <button class="px-3 py-1 rounded-full bg-yellow-100 text-yellow-700 text-xs">Archive</button>
+                {% endif %}
+              </form>
+
+              <form method="post" action="/admin/wagers/{{ wager.id }}/delete" onsubmit="return confirm('Permanently delete this wager?')">
+                <input type="hidden" name="redirect_to" value="{{ current_url }}">
+                <button class="px-3 py-1 rounded-full bg-red-200 text-red-700 text-xs">Delete</button>
+              </form>
+            </div>
+
+            <form method="post" action="/admin/wagers/{{ wager.id }}/edit" class="border-t pt-3 mt-3 space-y-3">
+              <input type="hidden" name="redirect_to" value="{{ current_url }}">
+              <p class="text-xs uppercase text-gray-500">Edit wager</p>
+              <label class="block">
+                <span class="text-xs font-medium text-gray-600">Description</span>
+                <textarea name="description" rows="2" class="mt-1 w-full border rounded px-3 py-2 focus:outline-none focus:ring focus:ring-indigo-200">{{ wager.description }}</textarea>
+              </label>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <label class="block">
+                  <span class="text-xs font-medium text-gray-600">Amount</span>
+                  <input type="text" name="amount" value="{{ '{:.2f}'.format(amount_value) }}" class="mt-1 w-full border rounded px-3 py-2 focus:outline-none focus:ring focus:ring-indigo-200">
+                </label>
+                <label class="block">
+                  <span class="text-xs font-medium text-gray-600">Line</span>
+                  <input type="text" name="line" value="{{ wager.line }}" class="mt-1 w-full border rounded px-3 py-2 focus:outline-none focus:ring focus:ring-indigo-200">
+                </label>
+                <label class="block">
+                  <span class="text-xs font-medium text-gray-600">Status</span>
+                  <select name="status" class="mt-1 w-full border rounded px-3 py-2 focus:outline-none focus:ring focus:ring-indigo-200">
+                    <option value="" selected>No change (current: {{ status|upper }})</option>
+                    {% for option in wager_statuses %}
+                    <option value="{{ option.value }}">{{ option.value|upper }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+              </div>
+              <label class="block">
+                <span class="text-xs font-medium text-gray-600">Archived state</span>
+                <select name="archived" class="mt-1 w-full border rounded px-3 py-2 focus:outline-none focus:ring focus:ring-indigo-200">
+                  <option value="" selected>No change (current: {{ 'ARCHIVED' if wager.archived else 'ACTIVE' }})</option>
+                  <option value="false">Set Active</option>
+                  <option value="true">Set Archived</option>
+                </select>
+              </label>
+              <button type="submit" class="bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-700 text-sm">Save changes</button>
+            </form>
+          </div>
+        </details>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endblock %}

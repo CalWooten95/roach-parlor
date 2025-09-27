@@ -1,4 +1,7 @@
+import hashlib
+import hmac
 import json
+import os
 from decimal import Decimal
 from datetime import datetime, date, timedelta
 from fastapi import FastAPI, Request, Depends, Form
@@ -15,6 +18,65 @@ app.include_router(users.router)
 app.include_router(wagers.router)
 app.include_router(catalog.router)
 templates = Jinja2Templates(directory="app/templates")
+
+_raw_admin_key = os.getenv("ADMIN_ACCESS_KEY")
+ADMIN_ACCESS_KEY = _raw_admin_key.strip() if _raw_admin_key else None
+ADMIN_COOKIE_NAME = "admin_access_token"
+ADMIN_KEY_SIGNATURE = (
+    hashlib.sha256(ADMIN_ACCESS_KEY.encode("utf-8")).hexdigest()
+    if ADMIN_ACCESS_KEY
+    else None
+)
+
+templates.env.globals["admin_requires_key"] = bool(ADMIN_ACCESS_KEY)
+templates.env.globals["admin_dashboard_path"] = "/admin/wagers"
+templates.env.globals["admin_cookie_name"] = ADMIN_COOKIE_NAME
+
+
+def _is_correct_admin_key(candidate: str | None) -> bool:
+    if not ADMIN_ACCESS_KEY:
+        return True
+    if not candidate:
+        return False
+    try:
+        return hmac.compare_digest(candidate, ADMIN_ACCESS_KEY)
+    except ValueError:
+        return False
+
+
+def _has_admin_access(request: Request) -> bool:
+    if not ADMIN_ACCESS_KEY:
+        return True
+
+    cookie_value = request.cookies.get(ADMIN_COOKIE_NAME)
+    if cookie_value and ADMIN_KEY_SIGNATURE:
+        try:
+            if hmac.compare_digest(cookie_value, ADMIN_KEY_SIGNATURE):
+                return True
+        except ValueError:
+            pass
+
+    header_key = request.headers.get("x-admin-key")
+    if _is_correct_admin_key(header_key):
+        return True
+
+    query_key = request.query_params.get("key")
+    if _is_correct_admin_key(query_key):
+        return True
+
+    return False
+
+
+def _attach_admin_cookie(response: RedirectResponse) -> RedirectResponse:
+    if ADMIN_KEY_SIGNATURE:
+        response.set_cookie(
+            ADMIN_COOKIE_NAME,
+            ADMIN_KEY_SIGNATURE,
+            httponly=True,
+            max_age=7 * 24 * 60 * 60,
+            samesite="lax",
+        )
+    return response
 
 
 def _normalize_wager_status(wager: models.Wager) -> str:
@@ -203,16 +265,123 @@ async def view_archived(request: Request, db=Depends(get_db)):
     )
 
 
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_login(request: Request):
+    if _is_correct_admin_key(request.query_params.get("key")) and ADMIN_ACCESS_KEY:
+        return _attach_admin_cookie(RedirectResponse("/admin/wagers", status_code=303))
+
+    if _has_admin_access(request):
+        return RedirectResponse("/admin/wagers", status_code=303)
+
+    if not ADMIN_ACCESS_KEY:
+        return RedirectResponse("/admin/wagers", status_code=303)
+
+    return templates.TemplateResponse(
+        "admin_login.html",
+        {"request": request, "error": bool(request.query_params.get("key"))},
+    )
+
+
+@app.post("/admin", response_class=HTMLResponse)
+async def admin_login_submit(request: Request, key: str = Form(...)):
+    if not ADMIN_ACCESS_KEY or _is_correct_admin_key(key):
+        return _attach_admin_cookie(RedirectResponse("/admin/wagers", status_code=303))
+
+    return templates.TemplateResponse(
+        "admin_login.html",
+        {"request": request, "error": True},
+    )
+
+
+@app.post("/admin/logout")
+async def admin_logout():
+    response = RedirectResponse("/", status_code=303)
+    response.delete_cookie(ADMIN_COOKIE_NAME)
+    return response
+
+
+@app.get("/admin/wagers", response_class=HTMLResponse)
+async def admin_wagers(request: Request, db=Depends(get_db)):
+    if ADMIN_ACCESS_KEY:
+        query_key = request.query_params.get("key")
+        if query_key and _is_correct_admin_key(query_key):
+            return _attach_admin_cookie(RedirectResponse("/admin/wagers", status_code=303))
+        if not _has_admin_access(request):
+            return RedirectResponse("/admin", status_code=303)
+
+    users = crud.get_users_with_wagers(db)
+    team_lookup = crud.build_team_alias_lookup(db)
+    status_counts: dict[str, int] = {status.value: 0 for status in models.WagerStatus}
+    archived_count = 0
+    total_wagers = 0
+
+    for user in users:
+        ordered: list[tuple[datetime, models.Wager]] = []
+        for wager in user.wagers:
+            total_wagers += 1
+            status = _normalize_wager_status(wager)
+            status_counts.setdefault(status, 0)
+            status_counts[status] += 1
+            if getattr(wager, "archived", False):
+                archived_count += 1
+            for leg in wager.legs:
+                leg.matched_teams = crud.match_leg_description_to_teams(leg.description, team_lookup)
+            created_at = wager.created_at
+            if isinstance(created_at, str):
+                try:
+                    created_at_dt = datetime.fromisoformat(created_at)
+                except ValueError:
+                    created_at_dt = datetime.min
+            elif isinstance(created_at, datetime):
+                created_at_dt = created_at
+            else:
+                created_at_dt = datetime.min
+            ordered.append((created_at_dt, wager))
+
+        ordered.sort(key=lambda item: item[0], reverse=True)
+        setattr(user, "all_wagers_admin", [item[1] for item in ordered])
+
+    current_url = request.url.path
+    if request.url.query:
+        current_url = f"{current_url}?{request.url.query}"
+
+    return templates.TemplateResponse(
+        "admin_wagers.html",
+        {
+            "request": request,
+            "users": users,
+            "status_counts": status_counts,
+            "archived_count": archived_count,
+            "total_wagers": total_wagers,
+            "wager_statuses": list(models.WagerStatus),
+            "current_url": current_url,
+        },
+    )
+
+
 @app.post("/wagers/{wager_id}/status")
-async def update_wager_status(wager_id: int, status: str = Form(...), db=Depends(get_db)):
+async def update_wager_status(
+    wager_id: int,
+    status: str = Form(...),
+    redirect_to: str = Form("/"),
+    db=Depends(get_db),
+):
     crud.update_wager_status(db, wager_id, status)
-    return RedirectResponse("/", status_code=303)
+    target = redirect_to or "/"
+    return RedirectResponse(target, status_code=303)
 
 
 @app.post("/wagers/{wager_id}/legs/{leg_id}/status")
-async def update_wager_leg_status(wager_id: int, leg_id: int, status: str = Form(...), db=Depends(get_db)):
+async def update_wager_leg_status(
+    wager_id: int,
+    leg_id: int,
+    status: str = Form(...),
+    redirect_to: str = Form("/"),
+    db=Depends(get_db),
+):
     crud.update_wager_leg_status(db, leg_id, status)
-    return RedirectResponse("/", status_code=303)
+    target = redirect_to or "/"
+    return RedirectResponse(target, status_code=303)
 
 
 @app.post("/wagers/{wager_id}/archive")
@@ -224,3 +393,53 @@ async def update_wager_archive(
 ):
     crud.set_wager_archived(db, wager_id, archived)
     return RedirectResponse(redirect_to, status_code=303)
+
+
+@app.post("/admin/wagers/{wager_id}/edit")
+async def admin_edit_wager(
+    request: Request,
+    wager_id: int,
+    description: str | None = Form(None),
+    amount: str | None = Form(None),
+    line: str | None = Form(None),
+    status: str | None = Form(None),
+    archived: str | None = Form(None),
+    redirect_to: str = Form("/admin/wagers"),
+    db=Depends(get_db),
+):
+    if ADMIN_ACCESS_KEY and not _has_admin_access(request):
+        return RedirectResponse("/admin", status_code=303)
+
+    archived_flag = None
+    if archived is not None:
+        normalized_archived = archived.strip().lower()
+        if normalized_archived:
+            archived_flag = normalized_archived in {"true", "1", "yes", "on"}
+
+    crud.update_wager_details(
+        db,
+        wager_id,
+        description=description,
+        amount=amount,
+        line=line,
+        status=status,
+        archived=archived_flag,
+    )
+
+    target = redirect_to or "/admin/wagers"
+    return RedirectResponse(target, status_code=303)
+
+
+@app.post("/admin/wagers/{wager_id}/delete")
+async def admin_delete_wager(
+    request: Request,
+    wager_id: int,
+    redirect_to: str = Form("/admin/wagers"),
+    db=Depends(get_db),
+):
+    if ADMIN_ACCESS_KEY and not _has_admin_access(request):
+        return RedirectResponse("/admin", status_code=303)
+
+    crud.delete_wager(db, wager_id)
+    target = redirect_to or "/admin/wagers"
+    return RedirectResponse(target, status_code=303)

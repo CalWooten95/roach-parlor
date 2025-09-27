@@ -21,6 +21,9 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
       <a href="/catalog" class="hover:underline">League Catalog</a>
       <a href="/stats" class="hover:underline">Player Stats</a>
       <a href="/archived" class="hover:underline">Archived Wagers</a>
+      {% if not admin_requires_key or request.cookies.get(admin_cookie_name) %}
+      <a href="{{ admin_dashboard_path }}" class="hover:underline">Admin</a>
+      {% endif %}
     </div>
   </div>
 </nav>
