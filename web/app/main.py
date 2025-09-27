@@ -3,7 +3,7 @@ import hmac
 import json
 import os
 from decimal import Decimal
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from fastapi import FastAPI, Request, Depends, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -101,6 +101,8 @@ def _wager_profit_delta(wager: models.Wager) -> Decimal:
 def _coerce_datetime(value: object) -> datetime | None:
     if isinstance(value, datetime):
         return value
+    if isinstance(value, date):
+        return datetime.combine(value, datetime.min.time(), tzinfo=timezone.utc)
     if isinstance(value, str):
         cleaned = value.strip()
         if cleaned.endswith("Z"):
@@ -430,6 +432,7 @@ async def admin_edit_wager(
     line: str | None = Form(None),
     status: str | None = Form(None),
     archived: str | None = Form(None),
+    created_at: str | None = Form(None),
     redirect_to: str = Form("/admin/wagers"),
     db=Depends(get_db),
 ):
@@ -442,6 +445,13 @@ async def admin_edit_wager(
         if normalized_archived:
             archived_flag = normalized_archived in {"true", "1", "yes", "on"}
 
+    created_at_dt = None
+    if created_at is not None and created_at.strip():
+        parsed = _coerce_datetime(created_at)
+        if parsed is not None and parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        created_at_dt = parsed
+
     crud.update_wager_details(
         db,
         wager_id,
@@ -450,6 +460,7 @@ async def admin_edit_wager(
         line=line,
         status=status,
         archived=archived_flag,
+        created_at=created_at_dt,
     )
 
     target = redirect_to or "/admin/wagers"

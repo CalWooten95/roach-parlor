@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from sqlalchemy.orm import Session, selectinload
 from . import models
@@ -163,6 +164,7 @@ def update_wager_details(
     line: str | None = None,
     status: str | None = None,
     archived: bool | None = None,
+    created_at: datetime | None = None,
 ):
     wager = db.query(models.Wager).filter(models.Wager.id == wager_id).first()
     if not wager:
@@ -189,6 +191,9 @@ def update_wager_details(
 
     if archived is not None:
         wager.archived = bool(archived)
+
+    if created_at is not None:
+        wager.created_at = created_at
 
     db.commit()
     db.refresh(wager)

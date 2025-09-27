@@ -195,6 +195,11 @@
                 </label>
               </div>
               <label class="block">
+                <span class="text-xs font-medium text-gray-600">Created At (UTC)</span>
+                <input type="text" name="created_at" value="{{ wager.created_at.strftime('%Y-%m-%d %H:%M') if wager.created_at else '' }}" placeholder="YYYY-MM-DD HH:MM" class="mt-1 w-full border rounded px-3 py-2 focus:outline-none focus:ring focus:ring-indigo-200">
+                <span class="text-[11px] text-gray-500">Leave blank to keep current timestamp.</span>
+              </label>
+              <label class="block">
                 <span class="text-xs font-medium text-gray-600">Archived state</span>
                 <select name="archived" class="mt-1 w-full border rounded px-3 py-2 focus:outline-none focus:ring focus:ring-indigo-200">
                   <option value="" selected>No change (current: {{ 'ARCHIVED' if wager.archived else 'ACTIVE' }})</option>
