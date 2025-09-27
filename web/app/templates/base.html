@@ -10,6 +10,70 @@ details.collapsible summary { list-style: none; }
 details.collapsible summary::-webkit-details-marker { display: none; }
 details.collapsible .collapsible-chevron { transition: transform 0.2s ease; }
 details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
+
+
+#blackjack-widget {
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.15);
+}
+
+.blackjack-section {
+  margin-bottom: 0.75rem;
+}
+
+.blackjack-cards {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.blackjack-card {
+  width: 40px;
+  height: 56px;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.8);
+  background: white;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 4px;
+  font-size: 0.75rem;
+  line-height: 1;
+  position: relative;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+}
+
+.blackjack-card.red {
+  color: #dc2626;
+}
+
+.blackjack-card .corner {
+  font-weight: 600;
+}
+
+.blackjack-card .corner.bottom {
+  transform: rotate(180deg);
+}
+
+.blackjack-card .suit {
+  font-size: 1rem;
+  align-self: center;
+}
+
+.blackjack-card.back {
+  background: linear-gradient(135deg, #1f2937 0%, #0f172a 100%);
+  border-color: rgba(30, 41, 59, 0.9);
+  color: white;
+  justify-content: center;
+  align-items: center;
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+}
+
+.blackjack-buttons button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -38,5 +102,417 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
 <main class="container mx-auto px-4">
 {% block content %}{% endblock %}
 </main>
+<div id="blackjack-widget" class="fixed bottom-4 right-4 w-72 bg-white rounded-2xl border border-gray-200 p-4 text-sm">
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="text-base font-semibold">Mini Blackjack</h2>
+    <button id="blackjack-new" class="text-xs bg-gray-900 text-white px-3 py-1 rounded hover:bg-gray-700">Deal</button>
+  </div>
+  <div class="blackjack-section">
+    <h3 class="text-xs uppercase tracking-wide text-gray-500 mb-1">Dealer</h3>
+    <div id="blackjack-dealer-cards" class="blackjack-cards"></div>
+    <p id="blackjack-dealer-score" class="text-xs text-gray-500 mt-1"></p>
+  </div>
+  <div class="blackjack-section">
+    <h3 class="text-xs uppercase tracking-wide text-gray-500 mb-1">Player</h3>
+    <div id="blackjack-player-hands" class="space-y-2"></div>
+  </div>
+  <p id="blackjack-message" class="text-xs text-gray-600 min-h-[2rem]"></p>
+  <div class="blackjack-buttons flex flex-wrap gap-2 mt-2">
+    <button id="blackjack-hit" class="flex-1 bg-emerald-500 text-white rounded px-3 py-1 text-xs hover:bg-emerald-600">Hit</button>
+    <button id="blackjack-stand" class="flex-1 bg-blue-500 text-white rounded px-3 py-1 text-xs hover:bg-blue-600">Stand</button>
+    <button id="blackjack-double" class="flex-1 bg-orange-500 text-white rounded px-3 py-1 text-xs hover:bg-orange-600">Double</button>
+    <button id="blackjack-split" class="flex-1 bg-purple-500 text-white rounded px-3 py-1 text-xs hover:bg-purple-600">Split</button>
+  </div>
+</div>
+<script>
+  (function blackjackWidget() {
+    const ranks = ['A', 'K', 'Q', 'J', '10', '9', '8', '7', '6', '5', '4', '3', '2'];
+    const suits = ['♠', '♥', '♦', '♣'];
+    const cardValues = {
+      A: 11,
+      K: 10,
+      Q: 10,
+      J: 10,
+      '10': 10,
+      '9': 9,
+      '8': 8,
+      '7': 7,
+      '6': 6,
+      '5': 5,
+      '4': 4,
+      '3': 3,
+      '2': 2,
+    };
+
+    const newGameButton = document.getElementById('blackjack-new');
+    const hitButton = document.getElementById('blackjack-hit');
+    const standButton = document.getElementById('blackjack-stand');
+    const doubleButton = document.getElementById('blackjack-double');
+    const splitButton = document.getElementById('blackjack-split');
+    const dealerCardsEl = document.getElementById('blackjack-dealer-cards');
+    const dealerScoreEl = document.getElementById('blackjack-dealer-score');
+    const playerHandsEl = document.getElementById('blackjack-player-hands');
+    const messageEl = document.getElementById('blackjack-message');
+
+    if (!newGameButton || !hitButton) {
+      return;
+    }
+
+    const state = {
+      deck: [],
+      dealer: [],
+      playerHands: [],
+      activeHand: 0,
+      revealDealer: false,
+      finished: true,
+      message: [],
+    };
+
+    function createDeck() {
+      const deck = [];
+      ranks.forEach((rank) => {
+        suits.forEach((suit) => {
+          deck.push({ rank, suit });
+        });
+      });
+      for (let i = deck.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [deck[i], deck[j]] = [deck[j], deck[i]];
+      }
+      return deck;
+    }
+
+    function drawCard() {
+      if (state.deck.length === 0) {
+        state.deck = createDeck();
+      }
+      return state.deck.pop();
+    }
+
+    function handValue(cards) {
+      let total = 0;
+      let aces = 0;
+      cards.forEach((card) => {
+        total += cardValues[card.rank];
+        if (card.rank === 'A') {
+          aces += 1;
+        }
+      });
+      while (total > 21 && aces > 0) {
+        total -= 10;
+        aces -= 1;
+      }
+      return total;
+    }
+
+    function isBlackjack(cards) {
+      return cards.length === 2 && handValue(cards) === 21;
+    }
+
+    function createCardElement(card, hidden) {
+      const el = document.createElement('div');
+      if (hidden) {
+        el.className = 'blackjack-card back';
+        el.textContent = '◆◇';
+        return el;
+      }
+      const isRed = card.suit === '♥' || card.suit === '♦';
+      el.className = 'blackjack-card' + (isRed ? ' red' : '');
+      const top = document.createElement('span');
+      top.className = 'corner top';
+      top.textContent = card.rank;
+      const suit = document.createElement('span');
+      suit.className = 'suit';
+      suit.textContent = card.suit;
+      const bottom = document.createElement('span');
+      bottom.className = 'corner bottom';
+      bottom.textContent = card.rank;
+      el.appendChild(top);
+      el.appendChild(suit);
+      el.appendChild(bottom);
+      return el;
+    }
+
+    function canSplit(hand) {
+      if (!hand || hand.cards.length !== 2) {
+        return false;
+      }
+      const [first, second] = hand.cards;
+      if (first.rank === second.rank) {
+        return true;
+      }
+      const tenValues = new Set(['10', 'J', 'Q', 'K']);
+      return tenValues.has(first.rank) && tenValues.has(second.rank);
+    }
+
+    function formatOutcome(result) {
+      switch (result) {
+        case 'blackjack':
+          return 'Blackjack!';
+        case 'win':
+          return 'Win';
+        case 'lose':
+          return 'Lose';
+        case 'push':
+          return 'Push';
+        case 'bust':
+          return 'Bust';
+        default:
+          return '';
+      }
+    }
+
+    function pushMessage(message) {
+      state.message.push(message);
+    }
+
+    function resetMessages(message) {
+      state.message = message ? [message] : [];
+    }
+
+    function renderDealer() {
+      dealerCardsEl.innerHTML = '';
+      state.dealer.forEach((card, index) => {
+        const hidden = !state.revealDealer && index === 1;
+        dealerCardsEl.appendChild(createCardElement(card, hidden));
+      });
+      if (state.revealDealer) {
+        dealerScoreEl.textContent = `Total: ${handValue(state.dealer)}`;
+      } else if (state.dealer.length) {
+        dealerScoreEl.textContent = `Total: ${handValue([state.dealer[0]])} + ?`;
+      } else {
+        dealerScoreEl.textContent = '';
+      }
+    }
+
+    function renderPlayerHands() {
+      playerHandsEl.innerHTML = '';
+      state.playerHands.forEach((hand, index) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'border rounded-lg p-2 ' + (index === state.activeHand && !state.finished ? 'bg-slate-100 border-slate-300' : 'bg-white border-slate-200');
+
+        const header = document.createElement('div');
+        header.className = 'flex items-center justify-between text-xs text-gray-600 mb-1';
+        const label = document.createElement('span');
+        label.textContent = `Hand ${index + 1}`;
+        const status = document.createElement('span');
+        if (hand.status === 'bust') {
+          status.textContent = 'Bust';
+        } else if (hand.result) {
+          status.textContent = formatOutcome(hand.result);
+        } else if (index === state.activeHand && !state.finished) {
+          status.textContent = 'Your turn';
+        } else {
+          status.textContent = '';
+        }
+        header.appendChild(label);
+        header.appendChild(status);
+        wrapper.appendChild(header);
+
+        const cardsEl = document.createElement('div');
+        cardsEl.className = 'blackjack-cards';
+        hand.cards.forEach((card) => {
+          cardsEl.appendChild(createCardElement(card, false));
+        });
+        wrapper.appendChild(cardsEl);
+
+        const total = document.createElement('p');
+        total.className = 'text-xs text-gray-500 mt-1';
+        total.textContent = `Total: ${handValue(hand.cards)}`;
+        wrapper.appendChild(total);
+
+        playerHandsEl.appendChild(wrapper);
+      });
+    }
+
+    function updateMessages() {
+      messageEl.innerHTML = state.message.map((line) => `<span>${line}</span>`).join('<br>');
+    }
+
+    function updateButtons() {
+      const current = state.playerHands[state.activeHand];
+      const inPlay = Boolean(current && !state.finished && current.status === 'playing');
+      hitButton.disabled = !inPlay;
+      standButton.disabled = !inPlay;
+      doubleButton.disabled = !(inPlay && current.cards.length === 2 && !current.hasActed);
+      splitButton.disabled = !(inPlay && canSplit(current));
+      newGameButton.textContent = state.finished ? 'Deal' : 'Restart';
+    }
+
+    function updateUI() {
+      renderDealer();
+      renderPlayerHands();
+      updateMessages();
+      updateButtons();
+    }
+
+    function setFinished() {
+      state.finished = true;
+      updateUI();
+    }
+
+    function startDealerTurn() {
+      state.revealDealer = true;
+      let dealerTotal = handValue(state.dealer);
+      while (dealerTotal < 17) {
+        state.dealer.push(drawCard());
+        dealerTotal = handValue(state.dealer);
+      }
+
+      state.playerHands.forEach((hand, index) => {
+        if (hand.status === 'bust') {
+          hand.result = 'bust';
+          pushMessage(`Hand ${index + 1}: Bust. Dealer wins.`);
+          return;
+        }
+        const playerTotal = handValue(hand.cards);
+        if (dealerTotal > 21) {
+          hand.result = 'win';
+          pushMessage(`Hand ${index + 1}: Dealer busts. You win!`);
+        } else if (playerTotal > dealerTotal) {
+          hand.result = 'win';
+          pushMessage(`Hand ${index + 1}: You win!`);
+        } else if (playerTotal < dealerTotal) {
+          hand.result = 'lose';
+          pushMessage(`Hand ${index + 1}: Dealer wins.`);
+        } else {
+          hand.result = 'push';
+          pushMessage(`Hand ${index + 1}: Push.`);
+        }
+      });
+
+      pushMessage('Click Deal to play again.');
+      setFinished();
+    }
+
+    function advanceHand() {
+      state.activeHand += 1;
+      const hasNext = state.activeHand < state.playerHands.length;
+      if (hasNext) {
+        pushMessage(`Playing Hand ${state.activeHand + 1}.`);
+        updateUI();
+      } else {
+        pushMessage('Dealer reveals...');
+        updateUI();
+        startDealerTurn();
+      }
+    }
+
+    function startRound() {
+      state.deck = createDeck();
+      state.dealer = [drawCard(), drawCard()];
+      state.playerHands = [
+        {
+          cards: [drawCard(), drawCard()],
+          status: 'playing',
+          hasActed: false,
+          result: null,
+        },
+      ];
+      state.activeHand = 0;
+      state.revealDealer = false;
+      state.finished = false;
+      resetMessages('Choose an action.');
+
+      const playerBJ = isBlackjack(state.playerHands[0].cards);
+      const dealerBJ = isBlackjack(state.dealer);
+      if (playerBJ || dealerBJ) {
+        state.revealDealer = true;
+        state.finished = true;
+        if (playerBJ && dealerBJ) {
+          state.playerHands[0].result = 'push';
+          resetMessages('Both have blackjack. Push.');
+        } else if (playerBJ) {
+          state.playerHands[0].result = 'blackjack';
+          resetMessages('Blackjack! You win.');
+        } else {
+          state.playerHands[0].result = 'lose';
+          resetMessages('Dealer blackjack. You lose.');
+        }
+        updateUI();
+        return;
+      }
+
+      updateUI();
+    }
+
+    function hit() {
+      const hand = state.playerHands[state.activeHand];
+      if (!hand || state.finished) {
+        return;
+      }
+      hand.cards.push(drawCard());
+      hand.hasActed = true;
+      const total = handValue(hand.cards);
+      if (total > 21) {
+        hand.status = 'bust';
+        resetMessages(`Hand ${state.activeHand + 1} busts!`);
+        advanceHand();
+      } else {
+        resetMessages(`Hand ${state.activeHand + 1}: Total ${total}.`);
+        updateUI();
+      }
+    }
+
+    function stand() {
+      const hand = state.playerHands[state.activeHand];
+      if (!hand || state.finished) {
+        return;
+      }
+      hand.status = 'stood';
+      hand.hasActed = true;
+      resetMessages(`Hand ${state.activeHand + 1} stands at ${handValue(hand.cards)}.`);
+      advanceHand();
+    }
+
+    function doubleDown() {
+      const hand = state.playerHands[state.activeHand];
+      if (!hand || state.finished || hand.cards.length !== 2 || hand.hasActed) {
+        return;
+      }
+      hand.cards.push(drawCard());
+      hand.hasActed = true;
+      const total = handValue(hand.cards);
+      if (total > 21) {
+        hand.status = 'bust';
+        resetMessages(`Double bust! Hand ${state.activeHand + 1} loses.`);
+      } else {
+        hand.status = 'stood';
+        resetMessages(`Double down to ${total}.`);
+      }
+      advanceHand();
+    }
+
+    function split() {
+      const hand = state.playerHands[state.activeHand];
+      if (!hand || state.finished || !canSplit(hand)) {
+        return;
+      }
+      const secondCard = hand.cards.pop();
+      const newHand = {
+        cards: [secondCard],
+        status: 'playing',
+        hasActed: false,
+        result: null,
+      };
+      hand.hasActed = false;
+      hand.status = 'playing';
+      hand.cards = [hand.cards[0]];
+      hand.cards.push(drawCard());
+      newHand.cards.push(drawCard());
+      state.playerHands.splice(state.activeHand + 1, 0, newHand);
+      resetMessages('Hand split! Continue playing current hand.');
+      updateUI();
+    }
+
+    newGameButton.addEventListener('click', startRound);
+    hitButton.addEventListener('click', hit);
+    standButton.addEventListener('click', stand);
+    doubleButton.addEventListener('click', doubleDown);
+    splitButton.addEventListener('click', split);
+
+    updateUI();
+  }());
+</script>
 </body>
 </html>
