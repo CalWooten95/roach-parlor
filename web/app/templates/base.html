@@ -74,6 +74,59 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
   cursor: not-allowed;
 }
 
+.blackjack-chip.active {
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.45), 0 10px 18px rgba(15, 23, 42, 0.25);
+  transform: translateY(-2px);
+}
+
+.blackjack-chip {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: 9999px;
+  border: 4px solid rgba(255, 255, 255, 0.85);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(15, 23, 42, 0.45);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35), 0 4px 10px rgba(15, 23, 42, 0.2);
+  cursor: pointer;
+  padding: 0;
+}
+
+.blackjack-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.2);
+}
+
+.blackjack-chip::before,
+.blackjack-chip::after {
+  content: "";
+  position: absolute;
+  border-radius: 9999px;
+  inset: 6px;
+  border: 2px dashed rgba(255, 255, 255, 0.6);
+}
+
+.blackjack-chip::after {
+  inset: 12px;
+  border-style: solid;
+  border-width: 2px;
+  opacity: 0.55;
+}
+
+.chip-red { background: #ef4444; }
+.chip-blue { background: #3b82f6; }
+.chip-green { background: #22c55e; }
+.chip-orange { background: #f97316; }
+.chip-black { background: #111827; }
+
 </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -116,6 +169,28 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
     <h3 class="text-xs uppercase tracking-wide text-gray-500 mb-1">Player</h3>
     <div id="blackjack-player-hands" class="space-y-2"></div>
   </div>
+  <div class="blackjack-section border-t border-gray-200 pt-2 mt-2">
+    <div class="flex items-center justify-between text-xs text-gray-600 mb-2">
+      <span>Bankroll: <strong>$<span id="blackjack-bankroll">100</span></strong></span>
+      <span>Bet: <strong>$<span id="blackjack-current-bet">0</span></strong></span>
+    </div>
+    <div id="blackjack-bet-area" class="border-2 border-dashed border-slate-300 rounded-xl p-3 text-center cursor-pointer hover:border-slate-500 transition-colors mb-3">
+      <p class="text-xs text-gray-600">Click to drop your selected chip.</p>
+      <div id="blackjack-active-chip-display" class="text-xs text-gray-500 mt-1"></div>
+      <div id="blackjack-bet-chips" class="flex flex-wrap justify-center gap-1 text-xs text-gray-700 mt-2"></div>
+    </div>
+    <div class="flex items-center justify-between text-xs text-gray-600 mb-1">
+      <span>Select a chip</span>
+      <button id="blackjack-clear-bet" class="bg-slate-200 text-slate-700 rounded-full px-3 py-1 text-xs">Clear</button>
+    </div>
+    <div class="flex flex-wrap gap-3" id="blackjack-chip-tray">
+      <button class="blackjack-chip chip-red" data-amount="5">$5</button>
+      <button class="blackjack-chip chip-blue" data-amount="10">$10</button>
+      <button class="blackjack-chip chip-green" data-amount="25">$25</button>
+      <button class="blackjack-chip chip-orange" data-amount="50">$50</button>
+      <button class="blackjack-chip chip-black" data-amount="100">$100</button>
+    </div>
+  </div>
   <p id="blackjack-message" class="text-xs text-gray-600 min-h-[2rem]"></p>
   <div class="blackjack-buttons flex flex-wrap gap-2 mt-2">
     <button id="blackjack-hit" class="flex-1 bg-emerald-500 text-white rounded px-3 py-1 text-xs hover:bg-emerald-600">Hit</button>
@@ -144,6 +219,14 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
       '2': 2,
     };
 
+    function formatCurrency(value) {
+      const num = Number(value);
+      if (!Number.isFinite(num)) {
+        return '0';
+      }
+      return num % 1 === 0 ? num.toString() : num.toFixed(2);
+    }
+
     const newGameButton = document.getElementById('blackjack-new');
     const hitButton = document.getElementById('blackjack-hit');
     const standButton = document.getElementById('blackjack-stand');
@@ -153,6 +236,13 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
     const dealerScoreEl = document.getElementById('blackjack-dealer-score');
     const playerHandsEl = document.getElementById('blackjack-player-hands');
     const messageEl = document.getElementById('blackjack-message');
+    const bankrollEl = document.getElementById('blackjack-bankroll');
+    const currentBetEl = document.getElementById('blackjack-current-bet');
+    const chipButtons = Array.from(document.querySelectorAll('.blackjack-chip'));
+    const clearBetButton = document.getElementById('blackjack-clear-bet');
+    const betArea = document.getElementById('blackjack-bet-area');
+    const betChipsEl = document.getElementById('blackjack-bet-chips');
+    const activeChipDisplay = document.getElementById('blackjack-active-chip-display');
 
     if (!newGameButton || !hitButton) {
       return;
@@ -166,6 +256,10 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
       revealDealer: false,
       finished: true,
       message: [],
+      bankroll: 100,
+      baseBet: 0,
+      betChips: [],
+      selectedChip: null,
     };
 
     function createDeck() {
@@ -263,11 +357,121 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
     }
 
     function pushMessage(message) {
+      if (!message) {
+        return;
+      }
       state.message.push(message);
     }
 
     function resetMessages(message) {
       state.message = message ? [message] : [];
+    }
+
+    function currentBetTotal() {
+      return state.betChips.reduce((sum, chip) => sum + chip, 0);
+    }
+
+    function refreshChipSelection() {
+      chipButtons.forEach((button) => {
+        const amount = Number(button.dataset.amount);
+        if (!Number.isFinite(amount)) {
+          return;
+        }
+        button.classList.toggle('active', state.selectedChip === amount);
+      });
+      if (activeChipDisplay) {
+        activeChipDisplay.textContent = state.selectedChip
+          ? `Selected chip: $${formatCurrency(state.selectedChip)}`
+          : 'No chip selected';
+      }
+    }
+
+    function renderBetChips() {
+      if (!betChipsEl) {
+        return;
+      }
+      betChipsEl.innerHTML = '';
+      if (!state.betChips.length) {
+        const empty = document.createElement('span');
+        empty.className = 'text-xs text-gray-400';
+        empty.textContent = 'No chips placed.';
+        betChipsEl.appendChild(empty);
+        return;
+      }
+      state.betChips.forEach((amount, index) => {
+        const chip = document.createElement('span');
+        chip.className = 'px-2 py-1 rounded-full bg-slate-100 border border-slate-300';
+        chip.textContent = `$${formatCurrency(amount)}`;
+        chip.title = `Chip ${index + 1}`;
+        betChipsEl.appendChild(chip);
+      });
+    }
+
+    function selectChip(amount) {
+      if (!state.finished) {
+        resetMessages('Finish the current hand before changing chips.');
+        updateUI();
+        return;
+      }
+      const normalized = Number(amount);
+      if (!Number.isFinite(normalized) || normalized <= 0) {
+        state.selectedChip = null;
+      } else {
+        state.selectedChip = normalized;
+        resetMessages(`Selected $${formatCurrency(normalized)} chip.`);
+      }
+      updateUI();
+    }
+
+    function handleBetAreaClick() {
+      if (!state.finished) {
+        resetMessages('Round in progress. Finish the hand first.');
+        updateUI();
+        return;
+      }
+      if (!state.selectedChip) {
+        resetMessages('Select a chip first.');
+        updateUI();
+        return;
+      }
+      addToBet(state.selectedChip);
+    }
+
+    function addToBet(amount) {
+      if (!state.finished) {
+        resetMessages('Round in progress. Finish the hand first.');
+        updateUI();
+        return;
+      }
+      const normalized = Number(amount);
+      if (!Number.isFinite(normalized) || normalized <= 0) {
+        return;
+      }
+      if (state.bankroll <= 0) {
+        resetMessages('You are out of bankroll.');
+        updateUI();
+        return;
+      }
+      const newTotal = currentBetTotal() + normalized;
+      if (newTotal > state.bankroll) {
+        resetMessages('Not enough bankroll for that chip.');
+        updateUI();
+        return;
+      }
+      state.betChips.push(normalized);
+      state.baseBet = newTotal;
+      resetMessages(`Betting $${formatCurrency(state.baseBet)}.`);
+      updateUI();
+    }
+
+    function clearBet() {
+      if (!state.finished) {
+        return;
+      }
+      state.betChips = [];
+      state.baseBet = 0;
+      resetMessages('Bet cleared.');
+      updateUI();
     }
 
     function renderDealer() {
@@ -294,7 +498,8 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
         const header = document.createElement('div');
         header.className = 'flex items-center justify-between text-xs text-gray-600 mb-1';
         const label = document.createElement('span');
-        label.textContent = `Hand ${index + 1}`;
+        const wagerDisplay = formatCurrency(hand.wager ?? state.baseBet);
+        label.textContent = `Hand ${index + 1} · $${wagerDisplay}`;
         const status = document.createElement('span');
         if (hand.status === 'bust') {
           status.textContent = 'Bust';
@@ -332,17 +537,38 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
     function updateButtons() {
       const current = state.playerHands[state.activeHand];
       const inPlay = Boolean(current && !state.finished && current.status === 'playing');
+      const currentWager = current ? current.wager || state.baseBet : 0;
+      const canAdjustBet = state.finished;
       hitButton.disabled = !inPlay;
       standButton.disabled = !inPlay;
-      doubleButton.disabled = !(inPlay && current.cards.length === 2 && !current.hasActed);
-      splitButton.disabled = !(inPlay && canSplit(current));
+      doubleButton.disabled = !(inPlay && current.cards.length === 2 && !current.hasActed && state.bankroll >= currentWager);
+      splitButton.disabled = !(inPlay && canSplit(current) && state.bankroll >= currentWager);
       newGameButton.textContent = state.finished ? 'Deal' : 'Restart';
+      const canDeal = state.finished && state.baseBet > 0 && state.bankroll >= state.baseBet;
+      newGameButton.disabled = !canDeal;
+      chipButtons.forEach((button) => {
+        button.disabled = !canAdjustBet;
+      });
+      if (clearBetButton) {
+        clearBetButton.disabled = !canAdjustBet || state.baseBet === 0;
+      }
+      if (betArea) {
+        if (canAdjustBet) {
+          betArea.classList.remove('opacity-60', 'pointer-events-none');
+        } else {
+          betArea.classList.add('opacity-60', 'pointer-events-none');
+        }
+      }
     }
 
     function updateUI() {
       renderDealer();
       renderPlayerHands();
+      renderBetChips();
+      refreshChipSelection();
       updateMessages();
+      bankrollEl.textContent = formatCurrency(state.bankroll);
+      currentBetEl.textContent = formatCurrency(state.baseBet);
       updateButtons();
     }
 
@@ -351,15 +577,23 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
       updateUI();
     }
 
-    function startDealerTurn() {
+    async function startDealerTurn() {
       state.revealDealer = true;
+      updateUI();
+
       let dealerTotal = handValue(state.dealer);
       while (dealerTotal < 17) {
+        await new Promise((resolve) => setTimeout(resolve, 900));
         state.dealer.push(drawCard());
         dealerTotal = handValue(state.dealer);
+        updateUI();
       }
 
+      dealerTotal = handValue(state.dealer);
+      resetMessages(`Dealer stands at ${dealerTotal > 21 ? 'bust' : dealerTotal}.`);
+
       state.playerHands.forEach((hand, index) => {
+        const wager = hand.wager || state.baseBet;
         if (hand.status === 'bust') {
           hand.result = 'bust';
           pushMessage(`Hand ${index + 1}: Bust. Dealer wins.`);
@@ -368,16 +602,19 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
         const playerTotal = handValue(hand.cards);
         if (dealerTotal > 21) {
           hand.result = 'win';
-          pushMessage(`Hand ${index + 1}: Dealer busts. You win!`);
+          state.bankroll += wager * 2;
+          pushMessage(`Hand ${index + 1}: Dealer busts. You win $${formatCurrency(wager)}.`);
         } else if (playerTotal > dealerTotal) {
           hand.result = 'win';
-          pushMessage(`Hand ${index + 1}: You win!`);
+          state.bankroll += wager * 2;
+          pushMessage(`Hand ${index + 1}: You win $${formatCurrency(wager)}.`);
         } else if (playerTotal < dealerTotal) {
           hand.result = 'lose';
           pushMessage(`Hand ${index + 1}: Dealer wins.`);
         } else {
           hand.result = 'push';
-          pushMessage(`Hand ${index + 1}: Push.`);
+          state.bankroll += wager;
+          pushMessage(`Hand ${index + 1}: Push. Bet returned ($${formatCurrency(wager)}).`);
         }
       });
 
@@ -389,16 +626,31 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
       state.activeHand += 1;
       const hasNext = state.activeHand < state.playerHands.length;
       if (hasNext) {
-        pushMessage(`Playing Hand ${state.activeHand + 1}.`);
+        resetMessages(`Playing Hand ${state.activeHand + 1}.`);
         updateUI();
       } else {
-        pushMessage('Dealer reveals...');
+        resetMessages('Dealer reveals...');
         updateUI();
         startDealerTurn();
       }
     }
 
     function startRound() {
+      if (!state.finished) {
+        return;
+      }
+      state.baseBet = currentBetTotal();
+      if (state.baseBet <= 0) {
+        resetMessages('Place a bet to play.');
+        updateUI();
+        return;
+      }
+      if (state.baseBet > state.bankroll) {
+        resetMessages('Insufficient bankroll for that bet.');
+        updateUI();
+        return;
+      }
+
       state.deck = createDeck();
       state.dealer = [drawCard(), drawCard()];
       state.playerHands = [
@@ -407,26 +659,35 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
           status: 'playing',
           hasActed: false,
           result: null,
+          wager: state.baseBet,
         },
       ];
+      state.bankroll -= state.baseBet;
       state.activeHand = 0;
       state.revealDealer = false;
       state.finished = false;
       resetMessages('Choose an action.');
 
-      const playerBJ = isBlackjack(state.playerHands[0].cards);
+      const playerHand = state.playerHands[0];
+      const playerBJ = isBlackjack(playerHand.cards);
       const dealerBJ = isBlackjack(state.dealer);
       if (playerBJ || dealerBJ) {
         state.revealDealer = true;
         state.finished = true;
         if (playerBJ && dealerBJ) {
-          state.playerHands[0].result = 'push';
-          resetMessages('Both have blackjack. Push.');
+          playerHand.result = 'push';
+          playerHand.status = 'stood';
+          resetMessages(`Both have blackjack. Push ($${formatCurrency(playerHand.wager)}).`);
+          state.bankroll += playerHand.wager;
         } else if (playerBJ) {
-          state.playerHands[0].result = 'blackjack';
-          resetMessages('Blackjack! You win.');
+          playerHand.result = 'blackjack';
+          playerHand.status = 'stood';
+          const profit = playerHand.wager * 1.5;
+          state.bankroll += playerHand.wager * 2.5;
+          resetMessages(`Blackjack! You win $${formatCurrency(profit)}.`);
         } else {
-          state.playerHands[0].result = 'lose';
+          playerHand.result = 'lose';
+          playerHand.status = 'stood';
           resetMessages('Dealer blackjack. You lose.');
         }
         updateUI();
@@ -470,6 +731,14 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
       if (!hand || state.finished || hand.cards.length !== 2 || hand.hasActed) {
         return;
       }
+      const additional = hand.wager || state.baseBet;
+      if (state.bankroll < additional) {
+        resetMessages('Not enough bankroll to double down.');
+        updateUI();
+        return;
+      }
+      state.bankroll -= additional;
+      hand.wager = (hand.wager || state.baseBet) + additional;
       hand.cards.push(drawCard());
       hand.hasActed = true;
       const total = handValue(hand.cards);
@@ -488,15 +757,24 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
       if (!hand || state.finished || !canSplit(hand)) {
         return;
       }
+      const wager = hand.wager || state.baseBet;
+      if (state.bankroll < wager) {
+        resetMessages('Not enough bankroll to split.');
+        updateUI();
+        return;
+      }
       const secondCard = hand.cards.pop();
       const newHand = {
         cards: [secondCard],
         status: 'playing',
         hasActed: false,
         result: null,
+        wager,
       };
+      state.bankroll -= wager;
       hand.hasActed = false;
       hand.status = 'playing';
+      hand.wager = wager;
       hand.cards = [hand.cards[0]];
       hand.cards.push(drawCard());
       newHand.cards.push(drawCard());
@@ -510,6 +788,20 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
     standButton.addEventListener('click', stand);
     doubleButton.addEventListener('click', doubleDown);
     splitButton.addEventListener('click', split);
+
+    chipButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        selectChip(button.dataset.amount);
+      });
+    });
+
+    if (clearBetButton) {
+      clearBetButton.addEventListener('click', clearBet);
+    }
+
+    if (betArea) {
+      betArea.addEventListener('click', handleBetAreaClick);
+    }
 
     updateUI();
   }());
