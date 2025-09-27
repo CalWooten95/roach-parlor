@@ -62,6 +62,58 @@ def create_user(db: Session, discord_id: str, display_name: str, profile_pic_url
     db.refresh(user)
     return user
 
+
+# --- Auth Users ---
+
+
+def get_auth_user_by_id(db: Session, user_id: int):
+    return db.query(models.AuthUser).filter(models.AuthUser.id == user_id).one_or_none()
+
+
+def get_auth_user_by_username(db: Session, username: str):
+    return (
+        db.query(models.AuthUser)
+        .filter(models.AuthUser.username == username)
+        .one_or_none()
+    )
+
+
+def create_auth_user(
+    db: Session,
+    *,
+    username: str,
+    password_hash: str,
+    salt: str,
+    is_admin: bool = False,
+):
+    user = models.AuthUser(
+        username=username,
+        password_hash=password_hash,
+        salt=salt,
+        is_admin=is_admin,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def update_auth_user_password(
+    db: Session,
+    user_id: int,
+    *,
+    password_hash: str,
+    salt: str,
+):
+    user = db.query(models.AuthUser).filter(models.AuthUser.id == user_id).one_or_none()
+    if not user:
+        return None
+    user.password_hash = password_hash
+    user.salt = salt
+    db.commit()
+    db.refresh(user)
+    return user
+
 # --- Wager Operations ---
 def get_user_wagers(db: Session, user_id: int):
     return db.query(models.Wager).filter(models.Wager.user_id == user_id).all()

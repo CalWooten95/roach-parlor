@@ -65,8 +65,8 @@ project-root/
   - UI actions (status toggles, archiving, deletes) use HTML forms with POST redirects to keep state on the server.
 
 - **Admin access**
-  - `ADMIN_ACCESS_KEY` (optional) protects the `/admin` and `/admin/wagers` pages.
-  - A valid key issued through query parameter, header, or form stores an HMAC-hashed cookie (`admin_access_token`), enabling subsequent access without resubmitting the key.
+  - Authentication now flows through the `auth_users` table with salted PBKDF2 password hashes. On startup the app seeds an admin record using `ADMIN_USERNAME`/`ADMIN_PASSWORD` (falling back to `ADMIN_ACCESS_KEY` for legacy setups).
+  - Successful sign-in issues a signed `session_token` cookie (via `SESSION_SECRET`); the `_require_admin` helper guards all protected routes and form handlers.
   - Admin dashboard consolidates every wager (active, archived, or removed) with inline controls to edit core fields, change status, toggle archive state, update leg statuses, or permanently delete entries.
 
 - **Reference data / catalog**
@@ -92,6 +92,7 @@ project-root/
 Key tables and relationships (managed through SQLAlchemy and Alembic):
 
 - `users`: Discord-linked participants; one-to-many with `wagers`.
+- `auth_users`: Application login accounts with hashed credentials and admin flag.
 - `wagers`: Core bet entity with amount, line, status (`open|won|lost|removed`), archive flag, timestamps, and optional screenshot URL.
 - `wager_legs`: Optional breakdown for parlay/prop legs; each stores a description and status.
 - `wager_matchups`: Optional link to a league and home/away teams, plus scheduled datetime.
@@ -104,8 +105,8 @@ Key tables and relationships (managed through SQLAlchemy and Alembic):
 - `GET /` – dashboard of active wagers by user.
 - `GET /archived` – archived wagers grouped by user.
 - `GET /stats` – aggregate win/loss and profit charts.
-- `GET /admin` – admin login (if key enforced).
-- `GET /admin/wagers` – admin control panel for all wagers.
+- `GET /admin` – admin login portal (redirects to dashboard when already authenticated).
+- `GET /admin/wagers` – admin control panel for all wagers (requires authenticated admin session).
 - API routers
   - `POST /users/` – ensure/create a Discord user record.
   - `GET /wagers/{user_id}` – list wagers for a user.
@@ -121,7 +122,10 @@ Key tables and relationships (managed through SQLAlchemy and Alembic):
 | Variable | Used By | Purpose |
 |----------|---------|---------|
 | `DATABASE_URL` | web | SQLAlchemy connection string (e.g., `postgresql+psycopg2://user:pass@db:5432/betdb`). |
-| `ADMIN_ACCESS_KEY` | web | Optional shared secret to guard the admin dashboard. Omit to leave admin open. |
+| `SESSION_SECRET` | web | Secret used to sign session cookies; set to a long random string in production. |
+| `ADMIN_USERNAME` | web | Username for the seeded admin account (`admin` by default). |
+| `ADMIN_PASSWORD` | web | Password for the seeded admin account. If omitted, the value of `ADMIN_ACCESS_KEY` is reused. |
+| `ADMIN_ACCESS_KEY` | web | Legacy fallback for environments that still rely on a shared key; safe to drop once the new vars are set. |
 | `POSTGRES_PASSWORD` etc. | db | Postgres credentials (see `docker-compose.yml`). |
 | `DISCORD_TOKEN` | bot | Discord bot authentication token. |
 | `OPENAI_API_KEY` | bot | Key for OpenAI Responses API. |
@@ -131,7 +135,7 @@ Key tables and relationships (managed through SQLAlchemy and Alembic):
 ## Running the Stack
 
 1. Ensure Docker and Docker Compose are installed.
-2. Export required environment variables (`DATABASE_URL`, `POSTGRES_PASSWORD`, Discord/OpenAI keys, optional `ADMIN_ACCESS_KEY`).
+2. Export required environment variables (`DATABASE_URL`, `POSTGRES_PASSWORD`, Discord/OpenAI keys) plus authentication settings (`SESSION_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`).
 3. Launch the stack:
    ```bash
    docker compose up --build
@@ -142,7 +146,7 @@ Key tables and relationships (managed through SQLAlchemy and Alembic):
 ## Development Patterns & Tips
 
 - Prefer editing through CRUD helpers instead of inline SQL in routes/templates. This keeps logic centralized and consistent between API and admin flows.
-- When adding new page routes, reuse `_has_admin_access`, `_normalize_wager_status`, and other helpers in `main.py` to stay aligned with existing behavior.
+- When adding new page routes, reuse `_require_admin`, `_normalize_wager_status`, and other helpers in `main.py` to stay aligned with existing behavior.
 - `crud.build_team_alias_lookup` and `crud.match_leg_description_to_teams` implement the fuzzy team matching used across dashboards—tap into them if new features require team detection.
 - Admin templates pass `redirect_to` to form handlers so users stay on the same page post-action. Preserve that pattern when adding new actions.
 - Alembic migrations should mirror any changes to `models.py`. Run `alembic revision --autogenerate` (configured elsewhere) and check results before applying.

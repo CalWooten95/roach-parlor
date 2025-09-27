@@ -3,17 +3,22 @@
 <div class="max-w-md mx-auto bg-white shadow rounded-xl p-6">
   <h1 class="text-2xl font-bold mb-4">Admin Access</h1>
   <p class="text-sm text-gray-600 mb-4">
-    Enter the administrator key to manage all wagers.
+    Sign in with your administrator credentials to manage wagers.
   </p>
   {% if error %}
   <div class="mb-4 px-3 py-2 rounded bg-red-100 text-red-700 text-sm">
-    Invalid key. Please try again.
+    Invalid username or password. Please try again.
   </div>
   {% endif %}
   <form method="post" action="/admin" class="space-y-3">
+    <input type="hidden" name="redirect_to" value="{{ redirect_to or '/admin/wagers' }}">
     <label class="block">
-      <span class="text-sm font-medium text-gray-700">Admin key</span>
-      <input type="password" name="key" class="mt-1 w-full border rounded px-3 py-2 focus:outline-none focus:ring focus:ring-indigo-200" autofocus required>
+      <span class="text-sm font-medium text-gray-700">Username</span>
+      <input type="text" name="username" class="mt-1 w-full border rounded px-3 py-2 focus:outline-none focus:ring focus:ring-indigo-200" autofocus required>
+    </label>
+    <label class="block">
+      <span class="text-sm font-medium text-gray-700">Password</span>
+      <input type="password" name="password" class="mt-1 w-full border rounded px-3 py-2 focus:outline-none focus:ring focus:ring-indigo-200" required>
     </label>
     <button type="submit" class="w-full bg-gray-900 text-white py-2 rounded-lg hover:bg-gray-700">
       Sign in

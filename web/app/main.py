@@ -1,17 +1,34 @@
-import hashlib
-import hmac
 import json
 import os
+from dataclasses import dataclass
 from decimal import Decimal
 from datetime import datetime, date, timedelta, timezone
+from typing import Optional
+from urllib.parse import urlencode
+
 from fastapi import FastAPI, Request, Depends, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from .database import get_db, init_db
+
+from .database import SessionLocal, get_db, init_db
 from . import crud, models, schemas
 from .routers import wagers
 from .routers import users
 from .routers import catalog
+from .security import (
+    SESSION_DURATION,
+    build_session_token,
+    ensure_initial_admin,
+    parse_session_token,
+    verify_password,
+)
+
+@dataclass
+class AuthenticatedUser:
+    id: int
+    username: str
+    is_admin: bool
+
 
 app = FastAPI()
 app.include_router(users.router)
@@ -19,65 +36,86 @@ app.include_router(wagers.router)
 app.include_router(catalog.router)
 templates = Jinja2Templates(directory="app/templates")
 
-_raw_admin_key = os.getenv("ADMIN_ACCESS_KEY")
-ADMIN_ACCESS_KEY = _raw_admin_key.strip() if _raw_admin_key else None
-ADMIN_COOKIE_NAME = "admin_access_token"
-ADMIN_KEY_SIGNATURE = (
-    hashlib.sha256(ADMIN_ACCESS_KEY.encode("utf-8")).hexdigest()
-    if ADMIN_ACCESS_KEY
-    else None
-)
+SESSION_COOKIE_NAME = "session_token"
+SESSION_SECRET = os.getenv("SESSION_SECRET") or os.getenv("ADMIN_ACCESS_KEY") or "change-me"
 
-templates.env.globals["admin_requires_key"] = bool(ADMIN_ACCESS_KEY)
 templates.env.globals["admin_dashboard_path"] = "/admin/wagers"
-templates.env.globals["admin_cookie_name"] = ADMIN_COOKIE_NAME
+templates.env.globals["session_cookie_name"] = SESSION_COOKIE_NAME
 
 
-def _is_correct_admin_key(candidate: str | None) -> bool:
-    if not ADMIN_ACCESS_KEY:
-        return True
-    if not candidate:
-        return False
-    try:
-        return hmac.compare_digest(candidate, ADMIN_ACCESS_KEY)
-    except ValueError:
-        return False
+def _current_user(request: Request) -> Optional[AuthenticatedUser]:
+    user = getattr(request.state, "auth_user", None)
+    if isinstance(user, AuthenticatedUser):
+        return user
+    return None
 
 
-def _has_admin_access(request: Request) -> bool:
-    if not ADMIN_ACCESS_KEY:
-        return True
-
-    cookie_value = request.cookies.get(ADMIN_COOKIE_NAME)
-    if cookie_value and ADMIN_KEY_SIGNATURE:
-        try:
-            if hmac.compare_digest(cookie_value, ADMIN_KEY_SIGNATURE):
-                return True
-        except ValueError:
-            pass
-
-    header_key = request.headers.get("x-admin-key")
-    if _is_correct_admin_key(header_key):
-        return True
-
-    query_key = request.query_params.get("key")
-    if _is_correct_admin_key(query_key):
-        return True
-
-    return False
+def _sanitize_redirect_target(value: str, default: str = "/") -> str:
+    if not value:
+        return default
+    if value.startswith("http://") or value.startswith("https://"):
+        return default
+    if not value.startswith("/"):
+        return default
+    return value
 
 
-def _attach_admin_cookie(response: RedirectResponse) -> RedirectResponse:
-    if ADMIN_KEY_SIGNATURE:
-        response.set_cookie(
-            ADMIN_COOKIE_NAME,
-            ADMIN_KEY_SIGNATURE,
-            httponly=True,
-            max_age=7 * 24 * 60 * 60,
-            samesite="lax",
-        )
+def _redirect_to_login(request: Request) -> RedirectResponse:
+    next_target = request.url.path
+    if request.url.query:
+        next_target = f"{next_target}?{request.url.query}"
+    login_url = "/admin"
+    if next_target:
+        login_url = f"{login_url}?{urlencode({'next': next_target})}"
+    return RedirectResponse(login_url, status_code=303)
+
+
+def _require_admin(request: Request) -> Optional[RedirectResponse]:
+    user = _current_user(request)
+    if not user or not user.is_admin:
+        return _redirect_to_login(request)
+    return None
+
+
+def _attach_session_cookie(response: RedirectResponse, user_id: int) -> RedirectResponse:
+    if not SESSION_SECRET:
+        raise RuntimeError("SESSION_SECRET must be configured")
+
+    token = build_session_token(user_id, SESSION_SECRET)
+    response.set_cookie(
+        SESSION_COOKIE_NAME,
+        token,
+        httponly=True,
+        max_age=int(SESSION_DURATION.total_seconds()),
+        samesite="lax",
+    )
     return response
 
+
+def _clear_session_cookie(response: RedirectResponse) -> RedirectResponse:
+    response.delete_cookie(SESSION_COOKIE_NAME, samesite="lax")
+    return response
+
+@app.middleware("http")
+async def populate_authenticated_user(request: Request, call_next):
+    request.state.auth_user = None
+    session_token = request.cookies.get(SESSION_COOKIE_NAME)
+    if session_token and SESSION_SECRET:
+        user_id = parse_session_token(session_token, SESSION_SECRET)
+        if user_id is not None:
+            db = SessionLocal()
+            try:
+                auth_user = crud.get_auth_user_by_id(db, user_id)
+                if auth_user:
+                    request.state.auth_user = AuthenticatedUser(
+                        id=auth_user.id,
+                        username=auth_user.username,
+                        is_admin=bool(auth_user.is_admin),
+                    )
+            finally:
+                db.close()
+    response = await call_next(request)
+    return response
 
 def _normalize_wager_status(wager: models.Wager) -> str:
     status = wager.status
@@ -117,6 +155,7 @@ def _coerce_datetime(value: object) -> datetime | None:
 @app.on_event("startup")
 async def startup():
     init_db()
+    ensure_initial_admin()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -295,47 +334,71 @@ async def view_archived(request: Request, db=Depends(get_db)):
 
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_login(request: Request):
-    if _is_correct_admin_key(request.query_params.get("key")) and ADMIN_ACCESS_KEY:
-        return _attach_admin_cookie(RedirectResponse("/admin/wagers", status_code=303))
+    user = _current_user(request)
+    requested_next = request.query_params.get("next")
+    next_target = _sanitize_redirect_target(requested_next, "/admin/wagers")
+    if user and user.is_admin:
+        return RedirectResponse(next_target, status_code=303)
 
-    if _has_admin_access(request):
-        return RedirectResponse("/admin/wagers", status_code=303)
-
-    if not ADMIN_ACCESS_KEY:
-        return RedirectResponse("/admin/wagers", status_code=303)
-
+    error_flag = request.query_params.get("error") == "1"
     return templates.TemplateResponse(
         "admin_login.html",
-        {"request": request, "error": bool(request.query_params.get("key"))},
+        {
+            "request": request,
+            "error": error_flag,
+            "redirect_to": next_target,
+        },
     )
 
 
 @app.post("/admin", response_class=HTMLResponse)
-async def admin_login_submit(request: Request, key: str = Form(...)):
-    if not ADMIN_ACCESS_KEY or _is_correct_admin_key(key):
-        return _attach_admin_cookie(RedirectResponse("/admin/wagers", status_code=303))
+async def admin_login_submit(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    redirect_to: str = Form("/admin/wagers"),
+    db=Depends(get_db),
+):
+    next_target = _sanitize_redirect_target(redirect_to, "/admin/wagers")
+    auth_user = crud.get_auth_user_by_username(db, username.strip())
+    if (
+        auth_user
+        and auth_user.is_admin
+        and verify_password(password, auth_user.salt, auth_user.password_hash)
+    ):
+        response = RedirectResponse(next_target, status_code=303)
+        return _attach_session_cookie(response, auth_user.id)
 
     return templates.TemplateResponse(
         "admin_login.html",
-        {"request": request, "error": True},
+        {
+            "request": request,
+            "error": True,
+            "redirect_to": next_target,
+        },
     )
+
+
+def _logout_response() -> RedirectResponse:
+    response = RedirectResponse("/", status_code=303)
+    return _clear_session_cookie(response)
+
+
+@app.post("/logout")
+async def logout():
+    return _logout_response()
 
 
 @app.post("/admin/logout")
 async def admin_logout():
-    response = RedirectResponse("/", status_code=303)
-    response.delete_cookie(ADMIN_COOKIE_NAME)
-    return response
+    return _logout_response()
 
 
 @app.get("/admin/wagers", response_class=HTMLResponse)
 async def admin_wagers(request: Request, db=Depends(get_db)):
-    if ADMIN_ACCESS_KEY:
-        query_key = request.query_params.get("key")
-        if query_key and _is_correct_admin_key(query_key):
-            return _attach_admin_cookie(RedirectResponse("/admin/wagers", status_code=303))
-        if not _has_admin_access(request):
-            return RedirectResponse("/admin", status_code=303)
+    guard = _require_admin(request)
+    if guard:
+        return guard
 
     users = crud.get_users_with_wagers(db)
     team_lookup = crud.build_team_alias_lookup(db)
@@ -436,8 +499,9 @@ async def admin_edit_wager(
     redirect_to: str = Form("/admin/wagers"),
     db=Depends(get_db),
 ):
-    if ADMIN_ACCESS_KEY and not _has_admin_access(request):
-        return RedirectResponse("/admin", status_code=303)
+    guard = _require_admin(request)
+    if guard:
+        return guard
 
     archived_flag = None
     if archived is not None:
@@ -474,8 +538,9 @@ async def admin_delete_wager(
     redirect_to: str = Form("/admin/wagers"),
     db=Depends(get_db),
 ):
-    if ADMIN_ACCESS_KEY and not _has_admin_access(request):
-        return RedirectResponse("/admin", status_code=303)
+    guard = _require_admin(request)
+    if guard:
+        return guard
 
     crud.delete_wager(db, wager_id)
     target = redirect_to or "/admin/wagers"

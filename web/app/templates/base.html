@@ -21,8 +21,16 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
       <a href="/catalog" class="hover:underline">League Catalog</a>
       <a href="/stats" class="hover:underline">Player Stats</a>
       <a href="/archived" class="hover:underline">Archived Wagers</a>
-      {% if not admin_requires_key or request.cookies.get(admin_cookie_name) %}
+      {% if request.state.auth_user and request.state.auth_user.is_admin %}
       <a href="{{ admin_dashboard_path }}" class="hover:underline">Admin</a>
+      {% endif %}
+      {% if request.state.auth_user %}
+      <span class="hidden sm:inline text-gray-300">Signed in as {{ request.state.auth_user.username }}</span>
+      <form method="post" action="/logout" class="inline">
+        <button class="hover:underline">Sign out</button>
+      </form>
+      {% else %}
+      <a href="/admin" class="hover:underline">Sign in</a>
       {% endif %}
     </div>
   </div>

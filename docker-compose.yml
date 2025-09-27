@@ -9,6 +9,10 @@ services:
       - db
     environment:
       - DATABASE_URL=${DATABASE_URL}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - ADMIN_ACCESS_KEY=${ADMIN_ACCESS_KEY}
   bot:
     build: ./bot
     environment:
