@@ -98,6 +98,20 @@ def _wager_profit_delta(wager: models.Wager) -> Decimal:
     return Decimal("0")
 
 
+def _coerce_datetime(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        cleaned = value.strip()
+        if cleaned.endswith("Z"):
+            cleaned = cleaned[:-1] + "+00:00"
+        try:
+            return datetime.fromisoformat(cleaned)
+        except ValueError:
+            return None
+    return None
+
+
 @app.on_event("startup")
 async def startup():
     init_db()
@@ -133,6 +147,8 @@ async def view_stats(request: Request, db=Depends(get_db)):
     player_stats: list[dict[str, object]] = []
     profit_datasets: list[dict[str, object]] = []
     bet_datasets: list[dict[str, object]] = []
+    window_end = date.today()
+    window_start = window_end - timedelta(days=29)
 
     for user in users:
         wagers = sorted(
@@ -146,6 +162,7 @@ async def view_stats(request: Request, db=Depends(get_db)):
         archived_count = 0
         daily_profit: dict[date, Decimal] = {}
         daily_bets: dict[date, int] = {}
+        profit_before_window = Decimal("0")
 
         for wager in wagers:
             status = _normalize_wager_status(wager)
@@ -168,15 +185,17 @@ async def view_stats(request: Request, db=Depends(get_db)):
             profit_delta = _wager_profit_delta(wager)
             total_profit += profit_delta
 
-            created_at = wager.created_at
-            if isinstance(created_at, str):
-                try:
-                    created_at = datetime.fromisoformat(created_at)
-                except ValueError:
-                    created_at = None
+            created_at = _coerce_datetime(getattr(wager, "created_at", None))
+            if created_at is None and getattr(wager, "matchup", None):
+                created_at = _coerce_datetime(getattr(wager.matchup, "scheduled_at", None))
 
             if created_at is not None:
                 day = created_at.date()
+                if day < window_start:
+                    profit_before_window += profit_delta
+                    continue
+                if day > window_end:
+                    day = window_end
                 daily_bets[day] = daily_bets.get(day, 0) + 1
                 daily_profit[day] = daily_profit.get(day, Decimal("0")) + profit_delta
 
@@ -198,14 +217,14 @@ async def view_stats(request: Request, db=Depends(get_db)):
             }
         )
 
-        if daily_profit:
-            today = date.today()
-            start_day = today - timedelta(days=29)
+        if daily_profit or profit_before_window:
             profit_points: list[dict[str, object]] = []
-            current_day = start_day
-            while current_day <= today:
-                value = float(daily_profit.get(current_day, Decimal("0")))
-                profit_points.append({"x": current_day.isoformat(), "y": value})
+            current_day = window_start
+            running_total = profit_before_window
+            while current_day <= window_end:
+                delta = daily_profit.get(current_day, Decimal("0"))
+                running_total += delta
+                profit_points.append({"x": current_day.isoformat(), "y": float(running_total)})
                 current_day += timedelta(days=1)
             profit_datasets.append(
                 {
@@ -217,11 +236,9 @@ async def view_stats(request: Request, db=Depends(get_db)):
             )
 
         if daily_bets:
-            today = date.today()
-            start_day = today - timedelta(days=29)
             bet_points: list[dict[str, object]] = []
-            current_day = start_day
-            while current_day <= today:
+            current_day = window_start
+            while current_day <= window_end:
                 value = daily_bets.get(current_day, 0)
                 bet_points.append({"x": current_day.isoformat(), "y": value})
                 current_day += timedelta(days=1)
@@ -234,7 +251,16 @@ async def view_stats(request: Request, db=Depends(get_db)):
                 }
             )
 
-    chart_payload = json.dumps({"profit": profit_datasets, "bets": bet_datasets})
+    chart_payload = json.dumps(
+        {
+            "profit": profit_datasets,
+            "bets": bet_datasets,
+            "range": {
+                "start": window_start.isoformat(),
+                "end": window_end.isoformat(),
+            },
+        }
+    )
 
     return templates.TemplateResponse(
         "stats.html",

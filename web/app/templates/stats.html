@@ -39,7 +39,7 @@
   </table>
 </div>
 
-<h2 class="text-xl font-semibold mb-3">Performance Over Time</h2>
+<h2 class="text-xl font-semibold mb-3">Performance Over The Last 30 Days</h2>
 {% if has_chart %}
 <div class="flex items-center gap-2 mb-3">
   <button type="button" data-chart="profit" aria-pressed="true"
@@ -64,12 +64,18 @@
     profit: chartConfig.profit || [],
     bets: chartConfig.bets || [],
   };
+  const dateRange = chartConfig.range || {};
   const palette = ['#2563eb', '#dc2626', '#16a34a', '#9333ea', '#f97316', '#0891b2'];
 
   const prepareDatasets = (datasets) => datasets.map((dataset, index) => {
     const color = dataset.borderColor || palette[index % palette.length];
+    const points = (dataset.data || []).map((point) => ({
+      x: new Date(point.x).valueOf(),
+      y: point.y,
+    }));
     return {
       ...dataset,
+      data: points,
       borderWidth: 2,
       fill: false,
       pointRadius: 3,
@@ -86,7 +92,6 @@
       datasets: prepareDatasets(datasetsByKey[defaultKey] || []),
     },
     options: {
-      parsing: false,
       responsive: true,
       interaction: {
         mode: 'nearest',
@@ -111,7 +116,7 @@
           beginAtZero: defaultKey === 'bets',
           title: {
             display: true,
-            text: defaultKey === 'bets' ? 'Bets Placed' : 'Daily Profit / Loss ($)',
+            text: defaultKey === 'bets' ? 'Bets Placed' : 'Total Profit / Loss ($)',
           },
         },
       },
@@ -135,6 +140,20 @@
   });
 
   const tabs = document.querySelectorAll('.chart-tab');
+
+  const applyAxisRange = () => {
+    if (dateRange.start) {
+      chart.options.scales.x.min = new Date(dateRange.start).valueOf();
+    } else {
+      delete chart.options.scales.x.min;
+    }
+    if (dateRange.end) {
+      chart.options.scales.x.max = new Date(dateRange.end).valueOf();
+    } else {
+      delete chart.options.scales.x.max;
+    }
+  };
+
   const activateTab = (key) => {
     tabs.forEach((tab) => {
       const isActive = tab.dataset.chart === key;
@@ -147,9 +166,13 @@
 
     chart.data.datasets = prepareDatasets(datasetsByKey[key] || []);
     chart.options.scales.y.beginAtZero = key === 'bets';
-    chart.options.scales.y.title.text = key === 'bets'
-      ? 'Bets Placed'
-      : 'Daily Profit / Loss ($)';
+    if (key === 'bets') {
+      chart.options.scales.y.min = 0;
+      chart.options.scales.y.title.text = 'Bets Placed';
+    } else {
+      delete chart.options.scales.y.min;
+      chart.options.scales.y.title.text = 'Total Profit / Loss ($)';
+    }
     chart.update();
   };
 
@@ -157,6 +180,7 @@
     tab.addEventListener('click', () => activateTab(tab.dataset.chart));
   });
 
+  applyAxisRange();
   activateTab(defaultKey);
 </script>
 {% else %}
