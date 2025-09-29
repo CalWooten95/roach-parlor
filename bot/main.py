@@ -65,7 +65,7 @@ def ensure_user_and_get_id(author: discord.User | discord.Member) -> int:
 SYSTEM_PROMPT = (
     "You extract structured data from sports wager screenshots. "
     "Return STRICT JSON with keys: description (string), amount (number), line (string), legs (array), "
-    "league_key (string), home_team (object|null), away_team (object|null). "
+    "league_key (string), home_team (object|null), away_team (object|null), is_live_bet (boolean). "
     "Each leg object must contain description (string) and status (open|won|lost). "
     "Default status is 'open' unless the ticket clearly shows otherwise. "
     "- For parlays: include one leg per selection with concise descriptions. "
@@ -81,6 +81,7 @@ SYSTEM_PROMPT = (
     "- home_team/away_team should include as many keys as visible: name, abbreviation, short_name, location, nickname, external_id. "
     "  Use null when a team is unknown. "
     "- If a field is unknown, set it to an empty string (line) or 0 (amount). "
+    "- If the ticket indicates a live wager (labels such as 'LIVE' or 'LIVE BET'), set is_live_bet to true; otherwise false. "
     "Do not add any extra keys or text."
 )
 
@@ -128,6 +129,14 @@ def parse_wager_from_image(image_url: str) -> Dict[str, Any]:
     except Exception:
         amount = 0.0
 
+    is_live_raw = data.get("is_live_bet")
+    if isinstance(is_live_raw, bool):
+        is_live_bet = is_live_raw
+    elif isinstance(is_live_raw, str):
+        is_live_bet = is_live_raw.strip().lower() in {"true", "yes", "1"}
+    else:
+        is_live_bet = False
+
     raw_legs = data.get("legs") or []
     legs: List[Dict[str, str]] = []
     for leg in raw_legs:
@@ -144,6 +153,14 @@ def parse_wager_from_image(image_url: str) -> Dict[str, Any]:
     # Single straight bets shouldn't create a leg entry—keep legs for true multi-leg wagers only.
     if len(legs) == 1:
         legs = []
+
+    searchable_text_parts = [description, line]
+    searchable_text_parts.extend(leg["description"] for leg in legs)
+    searchable_text = " ".join(filter(None, searchable_text_parts))
+    if not is_live_bet and re.search(r"\blive(\s+bet)?\b", searchable_text, flags=re.I):
+        is_live_bet = True
+    if not is_live_bet and text and re.search(r"\blive(\s+bet)?\b", text, flags=re.I):
+        is_live_bet = True
 
     league_key = str(data.get("league_key") or data.get("league") or "").strip().lower()
 
@@ -167,6 +184,7 @@ def parse_wager_from_image(image_url: str) -> Dict[str, Any]:
         "league_key": league_key,
         "home_team": home_team,
         "away_team": away_team,
+        "is_live_bet": is_live_bet,
     }
 
 
@@ -376,6 +394,8 @@ async def on_message(message: discord.Message):
 
             parsed = parse_wager_from_image(image.url)
             description = parsed["description"] or "Bet (screenshot)"
+            if parsed.get("is_live_bet") and not description.strip().startswith("🚨"):
+                description = f"🚨🚨 {description}"
             amount = float(parsed["amount"] or 0)
             line = parsed["line"] or ""
 
