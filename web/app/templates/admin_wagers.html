@@ -43,7 +43,19 @@
             <p class="text-xs text-gray-500">User ID: {{ user.id }}</p>
           </div>
         </div>
-        <p class="text-sm text-gray-500">{{ user.all_wagers_admin|length }} wager{{ '' if user.all_wagers_admin|length == 1 else 's' }}</p>
+        <div class="flex flex-col md:flex-row md:items-center md:gap-4 text-sm text-gray-500">
+          <p class="text-sm text-gray-500">{{ user.all_wagers_admin|length }} wager{{ '' if user.all_wagers_admin|length == 1 else 's' }}</p>
+          <form method="post" action="/admin/users/{{ user.id }}/tracking" class="flex items-center gap-2 text-sm text-gray-600">
+            <input type="hidden" name="redirect_to" value="{{ current_url }}">
+            <label class="inline-flex items-center gap-2">
+              <input type="checkbox" name="tracked_state" value="true" class="h-4 w-4" {% if user.tracked %}checked{% endif %} onchange="this.form.submit()">
+              <span>Tracked in stats</span>
+            </label>
+          </form>
+          {% if not user.tracked %}
+          <span class="text-xs text-amber-600">Stats currently excluded</span>
+          {% endif %}
+        </div>
       </div>
 
       <div data-incremental-container data-batch-size="5">

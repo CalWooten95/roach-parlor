@@ -29,3 +29,8 @@ def init_db():
             conn.execute(
                 text("ALTER TABLE wagers ADD COLUMN archived BOOLEAN NOT NULL DEFAULT FALSE")
             )
+        user_columns = inspector.get_columns("users")
+        if not any(column["name"] == "tracked" for column in user_columns):
+            conn.execute(
+                text("ALTER TABLE users ADD COLUMN tracked BOOLEAN NOT NULL DEFAULT TRUE")
+            )

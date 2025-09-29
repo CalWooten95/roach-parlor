@@ -79,6 +79,16 @@ def create_user(db: Session, discord_id: str, display_name: str, profile_pic_url
     return user
 
 
+def set_user_tracked(db: Session, user_id: int, tracked: bool):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        return None
+    user.tracked = tracked
+    db.commit()
+    db.refresh(user)
+    return user
+
+
 # --- Auth Users ---
 
 

@@ -108,6 +108,7 @@ class User(Base):
     discord_id = Column(String, unique=True, index=True)
     display_name = Column(String)
     profile_pic_url = Column(String)
+    tracked = Column(Boolean, nullable=False, default=True, server_default=expression.true())
     wagers = relationship("Wager", back_populates="user")
 
 

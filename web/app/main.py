@@ -6,7 +6,7 @@ from datetime import datetime, date, timedelta, timezone
 from typing import Optional
 from urllib.parse import urlencode
 
-from fastapi import FastAPI, Request, Depends, Form
+from fastapi import FastAPI, Request, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -184,7 +184,7 @@ async def view_catalog(request: Request, db=Depends(get_db)):
 
 @app.get("/stats", response_class=HTMLResponse)
 async def view_stats(request: Request, db=Depends(get_db)):
-    users = crud.get_users_with_wagers(db)
+    users = [user for user in crud.get_users_with_wagers(db) if getattr(user, "tracked", True)]
     player_stats: list[dict[str, object]] = []
     profit_datasets: list[dict[str, object]] = []
     bet_datasets: list[dict[str, object]] = []
@@ -448,6 +448,27 @@ async def admin_wagers(request: Request, db=Depends(get_db)):
             "current_url": current_url,
         },
     )
+
+
+@app.post("/admin/users/{user_id}/tracking")
+async def update_user_tracking(
+    request: Request,
+    user_id: int,
+    tracked_state: str | None = Form(None),
+    redirect_to: str = Form("/admin/wagers"),
+    db=Depends(get_db),
+):
+    guard = _require_admin(request)
+    if guard:
+        return guard
+
+    normalized = (tracked_state or "").strip().lower()
+    tracked = normalized not in {"", "0", "false", "off", "no"}
+    updated = crud.set_user_tracked(db, user_id, tracked)
+    if not updated:
+        raise HTTPException(status_code=404, detail="User not found")
+    target = _sanitize_redirect_target(redirect_to, "/admin/wagers")
+    return RedirectResponse(target, status_code=303)
 
 
 @app.post("/wagers/{wager_id}/status")
