@@ -837,6 +837,52 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
 
     updateUI();
   }());
+
+  document.querySelectorAll('[data-incremental-container]').forEach((container) => {
+    const list = container.querySelector('[data-incremental-list]');
+    if (!list) {
+      return;
+    }
+    const batchSize = parseInt(container.dataset.batchSize || '5', 10);
+    const initialVisible = parseInt(container.dataset.initialVisible || String(batchSize), 10);
+    const items = Array.from(list.querySelectorAll('[data-incremental-item]'));
+    const loadMoreButton = container.querySelector('[data-load-more]');
+
+    if (!items.length) {
+      if (loadMoreButton) {
+        loadMoreButton.classList.add('hidden');
+      }
+      return;
+    }
+
+    let visibleCount = Math.min(initialVisible, items.length);
+
+    const updateVisibility = () => {
+      items.forEach((item, index) => {
+        if (index < visibleCount) {
+          item.classList.remove('hidden');
+        } else {
+          item.classList.add('hidden');
+        }
+      });
+      if (loadMoreButton) {
+        if (visibleCount >= items.length) {
+          loadMoreButton.classList.add('hidden');
+        } else {
+          loadMoreButton.classList.remove('hidden');
+        }
+      }
+    };
+
+    if (loadMoreButton) {
+      loadMoreButton.addEventListener('click', () => {
+        visibleCount = Math.min(visibleCount + batchSize, items.length);
+        updateVisibility();
+      });
+    }
+
+    updateVisibility();
+  });
 </script>
 </body>
 </html>

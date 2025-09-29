@@ -46,11 +46,12 @@
         <p class="text-sm text-gray-500">{{ user.all_wagers_admin|length }} wager{{ '' if user.all_wagers_admin|length == 1 else 's' }}</p>
       </div>
 
-      <div class="space-y-3">
+      <div data-incremental-container data-batch-size="5">
+        <div class="space-y-3" data-incremental-list>
         {% for wager in user.all_wagers_admin %}
         {% set amount_value = wager.amount if wager.amount is not none else 0 %}
         {% set status = wager.status.value if wager.status is not string else wager.status %}
-        <details class="border rounded-xl">
+        <details class="border rounded-xl {% if loop.index0 >= 5 %}hidden{% endif %}" data-incremental-item>
           <summary class="cursor-pointer px-4 py-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
               <p class="font-semibold">#{{ wager.id }} · {{ wager.description }}</p>
@@ -212,6 +213,12 @@
           </div>
         </details>
         {% endfor %}
+        </div>
+        {% if user.all_wagers_admin|length > 5 %}
+        <div class="mt-4 text-center">
+          <button type="button" class="text-sm text-blue-600 hover:text-blue-800" data-load-more>Load more wagers</button>
+        </div>
+        {% endif %}
       </div>
     </section>
     {% endif %}

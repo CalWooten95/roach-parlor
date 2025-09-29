@@ -40,11 +40,27 @@ def get_users_with_wagers(db: Session):
         .all()
     )
 
+    def sort_wagers(wager_list: list[models.Wager]):
+        def created_key(wager: models.Wager):
+            created = getattr(wager, "created_at", None)
+            if isinstance(created, datetime):
+                return created
+            if isinstance(created, str):
+                try:
+                    return datetime.fromisoformat(created)
+                except ValueError:
+                    return datetime.min
+            return datetime.min
+
+        return sorted(wager_list, key=created_key, reverse=True)
+
     for user in users:
         active = [wager for wager in user.wagers if not getattr(wager, "archived", False)]
         archived = [wager for wager in user.wagers if getattr(wager, "archived", False)]
-        setattr(user, "active_wagers", active)
-        setattr(user, "archived_wagers", archived)
+        active_sorted = sort_wagers(active)
+        archived_sorted = sort_wagers(archived)
+        setattr(user, "active_wagers", active_sorted)
+        setattr(user, "archived_wagers", archived_sorted)
 
     return users
 
