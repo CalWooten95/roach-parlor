@@ -29,6 +29,7 @@ intents.message_content = True
 client = discord.Client(intents=intents)
 
 CATALOG_TTL_SECONDS = 60 * 15
+LIVE_PREFIX = "🚨 LIVE 🚨 "
 _catalog_cache: Dict[str, Any] = {
     "expires": 0.0,
     "leagues_by_key": {},
@@ -82,25 +83,28 @@ SYSTEM_PROMPT = (
     "  Use null when a team is unknown. "
     "- If a field is unknown, set it to an empty string (line) or 0 (amount). "
     "- If the ticket indicates a live wager (labels such as 'LIVE' or 'LIVE BET'), set is_live_bet to true; otherwise false. "
+    "- You may also receive extra context text from the user alongside the screenshot; treat it as a reliable hint and make reasonable inferences from it when the slip itself is ambiguous. "
     "Do not add any extra keys or text."
 )
 
 
-def parse_wager_from_image(image_url: str) -> Dict[str, Any]:
+def parse_wager_from_image(image_url: str, *, extra_context: str | None = None) -> Dict[str, Any]:
     if _openai_client is None:
         raise RuntimeError("OpenAI client not initialized. Set OPENAI_API_KEY.")
 
+    content_blocks = [{"type": "input_text", "text": SYSTEM_PROMPT}]
+    if extra_context:
+        content_blocks.append(
+            {
+                "type": "input_text",
+                "text": f"Additional context supplied with the command: {extra_context}",
+            }
+        )
+    content_blocks.append({"type": "input_image", "image_url": image_url})
+
     response = _openai_client.responses.create(
         model="gpt-4o-mini",
-        input=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "input_text", "text": SYSTEM_PROMPT},
-                    {"type": "input_image", "image_url": image_url},
-                ],
-            }
-        ],
+        input=[{"role": "user", "content": content_blocks}],
     )
 
     text = getattr(response, "output_text", None)
@@ -156,6 +160,8 @@ def parse_wager_from_image(image_url: str) -> Dict[str, Any]:
 
     searchable_text_parts = [description, line]
     searchable_text_parts.extend(leg["description"] for leg in legs)
+    if extra_context:
+        searchable_text_parts.append(extra_context)
     searchable_text = " ".join(filter(None, searchable_text_parts))
     if not is_live_bet and re.search(r"\blive(\s+bet)?\b", searchable_text, flags=re.I):
         is_live_bet = True
@@ -372,7 +378,11 @@ async def on_message(message: discord.Message):
     if isinstance(message.channel, (discord.TextChannel, discord.Thread)) and getattr(message.channel, "name", "") != TARGET_CHANNEL:
         return
 
-    if message.content.strip().lower().startswith("!track"):
+    raw_content = message.content.strip()
+    parts = raw_content.split(maxsplit=1) if raw_content else []
+    command = parts[0].lower() if parts else ""
+
+    if command == "!track":
         if not message.attachments:
             await message.channel.send("❌ Please attach a **screenshot** of the bet with the `!track` command.")
             return
@@ -392,10 +402,11 @@ async def on_message(message: discord.Message):
             user_id = ensure_user_and_get_id(message.author)
             await message.channel.send("🧐 Reading your screenshot…")
 
-            parsed = parse_wager_from_image(image.url)
+            extra_context = parts[1].strip() if len(parts) > 1 else ""
+            parsed = parse_wager_from_image(image.url, extra_context=extra_context)
             description = parsed["description"] or "Bet (screenshot)"
-            if parsed.get("is_live_bet") and not description.strip().startswith("🚨"):
-                description = f"🚨🚨 {description}"
+            if parsed.get("is_live_bet") and not description.strip().startswith(LIVE_PREFIX.strip()):
+                description = f"{LIVE_PREFIX}{description}"
             amount = float(parsed["amount"] or 0)
             line = parsed["line"] or ""
 
