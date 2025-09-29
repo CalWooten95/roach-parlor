@@ -18,7 +18,7 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
 }
 
 .blackjack-collapsed {
-  transform: translateY(20px);
+  transform: translateY(-12px);
   opacity: 0.35;
 }
 
@@ -165,7 +165,7 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
 <main class="container mx-auto px-4">
 {% block content %}{% endblock %}
 </main>
-<div id="blackjack-widget" class="fixed bottom-4 right-4 w-72 bg-white rounded-2xl border border-gray-200 p-4 text-sm blackjack-collapsed">
+<div id="blackjack-widget" class="fixed top-24 right-4 w-72 bg-white rounded-2xl border border-gray-200 p-4 text-sm blackjack-collapsed">
   <div class="flex items-center justify-between mb-3">
     <div class="flex items-center gap-2">
       <button id="blackjack-toggle" title="Toggle blackjack" class="text-xs bg-slate-200 text-slate-700 px-2 py-1 rounded hover:bg-slate-300">+</button>
