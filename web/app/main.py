@@ -160,7 +160,8 @@ async def startup():
 
 @app.get("/", response_class=HTMLResponse)
 async def read_dashboard(request: Request, db=Depends(get_db)):
-    users = crud.get_users_with_wagers(db)
+    raw_users = crud.get_users_with_wagers(db)
+    users = [user for user in raw_users if getattr(user, "tracked", True)]
     team_lookup = crud.build_team_alias_lookup(db)
     for user in users:
         wagers = getattr(user, "active_wagers", user.wagers)

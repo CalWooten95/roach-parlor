@@ -387,57 +387,112 @@ async def on_message(message: discord.Message):
             await message.channel.send("❌ Please attach a **screenshot** of the bet with the `!track` command.")
             return
 
-        image = None
+        image_attachments: List[discord.Attachment] = []
         for attachment in message.attachments:
             content_type = (attachment.content_type or "").lower()
             if "image" in content_type or attachment.filename.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
-                image = attachment
-                break
+                image_attachments.append(attachment)
 
-        if not image:
+        if not image_attachments:
             await message.channel.send("❌ I didn't find an image attachment. Please attach a screenshot (PNG/JPG).")
             return
 
         try:
             user_id = ensure_user_and_get_id(message.author)
-            await message.channel.send("🧐 Reading your screenshot…")
+            total_images = len(image_attachments)
+            status_text = (
+                "🧐 Reading your screenshot…"
+                if total_images == 1
+                else f"🧐 Reading {total_images} screenshots…"
+            )
+            await message.channel.send(status_text)
 
             extra_context = parts[1].strip() if len(parts) > 1 else ""
-            parsed = parse_wager_from_image(image.url, extra_context=extra_context)
-            description = parsed["description"] or "Bet (screenshot)"
-            if parsed.get("is_live_bet") and not description.strip().startswith(LIVE_PREFIX.strip()):
-                description = f"{LIVE_PREFIX}{description}"
-            amount = float(parsed["amount"] or 0)
-            line = parsed["line"] or ""
+            success_blocks: List[str] = []
+            error_blocks: List[str] = []
 
-            matchup, matchup_notes = resolve_matchup_ids(parsed)
-            _ = create_wager(
-                user_id=user_id,
-                description=description,
-                amount=amount,
-                line=line,
-                legs=parsed["legs"],
-                matchup=matchup,
-            )
+            for index, attachment in enumerate(image_attachments, start=1):
+                try:
+                    parsed = parse_wager_from_image(attachment.url, extra_context=extra_context)
+                    description = parsed["description"] or "Bet (screenshot)"
+                    if parsed.get("is_live_bet") and not description.strip().startswith(LIVE_PREFIX.strip()):
+                        description = f"{LIVE_PREFIX}{description}"
+                    amount = float(parsed["amount"] or 0)
+                    line = parsed["line"] or ""
 
-            leg_lines = "\n".join(f"    - {leg['description']} ({leg['status']})" for leg in parsed["legs"])
-            summary = (
-                f"**Tracked!**\n• **Desc:** {description}\n"
-                f"• **Amount:** ${amount:.2f}\n"
-                f"• **Line:** {line or '(unknown)'}"
-            )
-            if leg_lines:
-                summary += f"\n• **Legs:**\n{leg_lines}"
-            if matchup_notes:
-                summary += "\n• Matchup mapping: " + "; ".join(matchup_notes)
-            if WEB_UI_URL:
-                summary += f"\nTracker UI: {WEB_UI_URL}"
-            await message.channel.send(summary)
+                    matchup, matchup_notes = resolve_matchup_ids(parsed)
+                    create_wager(
+                        user_id=user_id,
+                        description=description,
+                        amount=amount,
+                        line=line,
+                        legs=parsed["legs"],
+                        matchup=matchup,
+                    )
+
+                    leg_lines = "\n".join(
+                        f"    - {leg['description']} ({leg['status']})" for leg in parsed["legs"]
+                    )
+                    block_lines = [
+                        f"**Image #{index}: {attachment.filename or 'screenshot'}**",
+                        f"• **Desc:** {description}",
+                        f"• **Amount:** ${amount:.2f}",
+                        f"• **Line:** {line or '(unknown)'}",
+                    ]
+                    if leg_lines:
+                        block_lines.append("• **Legs:**\n" + leg_lines)
+                    if matchup_notes:
+                        block_lines.append("• Matchup mapping: " + "; ".join(matchup_notes))
+                    success_blocks.append("\n".join(block_lines))
+
+                except requests.HTTPError as http_err:
+                    response = http_err.response
+                    if response is not None:
+                        detail = f"{response.status_code} {response.text[:200]}"
+                    else:
+                        detail = str(http_err)
+                    error_blocks.append(
+                        f"Image #{index}: API error while creating the wager — {detail}"
+                    )
+                except Exception as exc:
+                    error_blocks.append(
+                        f"Image #{index}: failed to process — {exc}"
+                    )
+
+            message_parts: List[str] = []
+            if success_blocks:
+                header = (
+                    "**Tracked!**"
+                    if len(success_blocks) == 1
+                    else f"**Tracked {len(success_blocks)} wagers!**"
+                )
+                message_parts.append(header)
+                message_parts.append("\n\n".join(success_blocks))
+                if WEB_UI_URL:
+                    message_parts.append(f"Tracker UI: {WEB_UI_URL}")
+            if error_blocks:
+                issues = "\n".join(f"• {text}" for text in error_blocks)
+                issue_header = "Issues encountered:" if success_blocks else "❌ Unable to process all attachments:"
+                message_parts.append(f"{issue_header}\n{issues}")
+            final_message = "\n\n".join(part for part in message_parts if part)
+            if final_message:
+                await message.channel.send(final_message)
+            else:
+                await message.channel.send(
+                    "❌ Sorry, I couldn't process any of those attachments. Try again or post clearer screenshots."
+                )
 
         except requests.HTTPError as http_err:
-            await message.channel.send(f"❌ API error: {http_err.response.status_code} {http_err.response.text}")
+            response = http_err.response
+            if response is not None:
+                detail = f"{response.status_code} {response.text[:200]}"
+            else:
+                detail = str(http_err)
+            await message.channel.send(f"❌ API error: {detail}")
         except Exception as exc:
-            await message.channel.send(f"❌ Sorry, I couldn't process that: `{exc}`. Try again or post a clearer screenshot.")
+            await message.channel.send(
+                f"❌ Sorry, I couldn't process that: `{exc}`. Try again or post clearer screenshots."
+            )
 
 
 if __name__ == "__main__":

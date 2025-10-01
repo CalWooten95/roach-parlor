@@ -4,14 +4,20 @@
 
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
   {% for user in users %}
-  {% if user.active_wagers %}
   <div class="bg-white rounded-xl shadow p-4">
     <!-- User info -->
     <div class="flex items-center gap-3 mb-3">
+      {% if user.profile_pic_url %}
       <img src="{{ user.profile_pic_url }}" alt="{{ user.display_name }}" class="w-10 h-10 rounded-full">
+      {% else %}
+      <div class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm font-semibold">
+        {{ user.display_name|default('?')|first }}
+      </div>
+      {% endif %}
       <h2 class="text-xl font-semibold">{{ user.display_name }}</h2>
     </div>
 
+    {% if user.active_wagers %}
     <!-- Wagers -->
     <div class="space-y-3 mt-3">
       {% for wager in user.active_wagers %}
@@ -139,8 +145,10 @@
         {% endif %}
       {% endfor %}
     </div>
+    {% else %}
+    <p class="text-sm text-gray-500 italic mt-3">No active wagers right now.</p>
+    {% endif %}
   </div>
-  {% endif %}
   {% endfor %}
 </div>
 {% endblock %}
