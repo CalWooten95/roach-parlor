@@ -153,6 +153,8 @@ def create_wager(
     legs: list[dict] | None = None,
     matchup: dict | None = None,
     archived: bool = False,
+    discord_message_id: str | None = None,
+    discord_channel_id: str | None = None,
 ):
     try:
         amount_value = Decimal(str(amount)).quantize(Decimal("0.01"))
@@ -165,6 +167,8 @@ def create_wager(
         amount=amount_value,
         line=line,
         archived=archived,
+        discord_message_id=discord_message_id,
+        discord_channel_id=discord_channel_id,
     )
     if legs:
         _prepare_legs(wager, legs)
@@ -186,7 +190,36 @@ def set_wager_archived(db: Session, wager_id: int, archived: bool):
     if not wager:
         return None
 
+    previous_archived = bool(wager.archived)
     wager.archived = archived
+    if archived and not previous_archived:
+        wager.archive_reacted = False
+    elif not archived and previous_archived:
+        wager.archive_reacted = False
+
+    db.commit()
+    db.refresh(wager)
+    return wager
+
+
+def get_archived_wagers_pending_reaction(db: Session, *, limit: int = 50):
+    query = (
+        db.query(models.Wager)
+        .filter(models.Wager.archived.is_(True))
+        .filter(models.Wager.archive_reacted.is_(False))
+        .order_by(models.Wager.created_at.asc())
+    )
+    if limit:
+        query = query.limit(limit)
+    return query.all()
+
+
+def mark_wager_archive_reacted(db: Session, wager_id: int, reacted: bool = True):
+    wager = db.query(models.Wager).filter(models.Wager.id == wager_id).first()
+    if not wager:
+        return None
+
+    wager.archive_reacted = bool(reacted)
     db.commit()
     db.refresh(wager)
     return wager

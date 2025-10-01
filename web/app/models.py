@@ -139,6 +139,9 @@ class Wager(Base):
     image_url = Column(String, nullable=True)
     status = Column(Enum(WagerStatus), default=WagerStatus.open)
     archived = Column(Boolean, default=False, nullable=False, server_default=expression.false())
+    discord_message_id = Column(String, nullable=True, index=True)
+    discord_channel_id = Column(String, nullable=True)
+    archive_reacted = Column(Boolean, default=False, nullable=False, server_default=expression.false())
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="wagers")

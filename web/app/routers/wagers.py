@@ -71,6 +71,8 @@ class WagerCreate(BaseModel):
     legs: list[WagerLegPayload] | None = None
     matchup: WagerMatchupPayload | None = None
     archived: bool | None = False
+    discord_message_id: str | None = None
+    discord_channel_id: str | None = None
 
 
 class WagerOut(BaseModel):
@@ -81,12 +83,31 @@ class WagerOut(BaseModel):
     line: str
     status: str
     archived: bool
+    archive_reacted: bool
+    discord_message_id: str | None = None
+    discord_channel_id: str | None = None
     payout: float | None = None
     legs: list[WagerLegOut] = Field(default_factory=list)
     matchup: WagerMatchupOut | None = None
 
     class Config:
         orm_mode = True
+
+
+class ArchiveReactionTarget(BaseModel):
+    id: int
+    status: str
+    archived: bool
+    archive_reacted: bool
+    discord_message_id: str | None = None
+    discord_channel_id: str | None = None
+
+    class Config:
+        orm_mode = True
+
+
+class ArchiveReactionUpdate(BaseModel):
+    reacted: bool = True
 
 
 @router.post("/", response_model=WagerOut)
@@ -105,6 +126,8 @@ def create_wager(wager: WagerCreate, db: Session = Depends(database.get_db)):
         legs=legs,
         matchup=matchup,
         archived=bool(wager.archived),
+        discord_message_id=wager.discord_message_id,
+        discord_channel_id=wager.discord_channel_id,
     )
 
 
@@ -127,6 +150,19 @@ def update_status(wager_id: int, status: str, db: Session = Depends(database.get
 @router.patch("/{wager_id}/archive", response_model=WagerOut)
 def update_archive_state(wager_id: int, archived: bool, db: Session = Depends(database.get_db)):
     wager = crud.set_wager_archived(db, wager_id, archived)
+    if not wager:
+        raise HTTPException(status_code=404, detail="Wager not found")
+    return wager
+
+
+@router.get("/archive/pending", response_model=list[ArchiveReactionTarget])
+def list_archive_reactions(limit: int = 50, db: Session = Depends(database.get_db)):
+    return crud.get_archived_wagers_pending_reaction(db, limit=limit)
+
+
+@router.post("/{wager_id}/archive/reacted", response_model=ArchiveReactionTarget)
+def mark_archive_reaction(wager_id: int, update: ArchiveReactionUpdate, db: Session = Depends(database.get_db)):
+    wager = crud.mark_wager_archive_reacted(db, wager_id, update.reacted)
     if not wager:
         raise HTTPException(status_code=404, detail="Wager not found")
     return wager

@@ -129,6 +129,9 @@ class WagerBase(BaseModel):
     image_url: Optional[str]
     status: Optional[str] = "open"
     archived: Optional[bool] = False
+    discord_message_id: Optional[str] = None
+    discord_channel_id: Optional[str] = None
+    archive_reacted: Optional[bool] = False
     legs: List[WagerLeg] = Field(default_factory=list)
 
 
