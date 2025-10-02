@@ -69,6 +69,10 @@ project-root/
   - Successful sign-in issues a signed `session_token` cookie (via `SESSION_SECRET`); the `_require_admin` helper guards all protected routes and form handlers.
   - Admin dashboard consolidates every wager (active, archived, or removed) with inline controls to edit core fields, change status, toggle archive state, update leg statuses, or permanently delete entries.
 
+- **Automated archiving**
+  - A background task runs on startup and once per day (configurable) to archive any active wagers whose status is already `won` or `lost`, keeping the dashboard focused on undecided bets.
+  - The cadence is controlled by `WAGER_AUTO_ARCHIVE_INTERVAL_SECONDS`; adjust `WAGER_AUTO_ARCHIVE_INITIAL_DELAY_SECONDS` to change the wait before the first scheduled pass.
+
 - **Reference data / catalog**
   - Leagues, teams, and players have dedicated CRUD endpoints (`/catalog/...`).
   - `crud.build_team_alias_lookup` prepares fuzzy alias matching used to highlight teams in wager legs. Pages hydrate this data and annotate legs before rendering.
@@ -131,6 +135,8 @@ Key tables and relationships (managed through SQLAlchemy and Alembic):
 | `OPENAI_API_KEY` | bot | Key for OpenAI Responses API. |
 | `API_URL` | bot | Base URL of the FastAPI service (`http://web:8000` in Docker, `http://localhost:8000` locally). |
 | `TARGET_CHANNEL`, `WEB_UI_URL`, `TARGET_CHANNEL`, `WEB_UI_URL` | bot | Optional routing/customization for Discord output. |
+| `WAGER_AUTO_ARCHIVE_INTERVAL_SECONDS` | web | Seconds between automated archive sweeps (defaults to daily). |
+| `WAGER_AUTO_ARCHIVE_INITIAL_DELAY_SECONDS` | web | Delay before the scheduler runs its first sweep (defaults to 60 seconds). |
 
 ## Running the Stack
 

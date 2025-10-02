@@ -202,6 +202,26 @@ def set_wager_archived(db: Session, wager_id: int, archived: bool):
     return wager
 
 
+def archive_decided_wagers(db: Session) -> int:
+    """Archive wagers that have been decided but remain active."""
+    query = (
+        db.query(models.Wager)
+        .filter(models.Wager.archived.is_(False))
+        .filter(models.Wager.status.in_([models.WagerStatus.won, models.WagerStatus.lost]))
+    )
+
+    archived_count = 0
+    for wager in query.all():
+        wager.archived = True
+        wager.archive_reacted = False
+        archived_count += 1
+
+    if archived_count:
+        db.commit()
+
+    return archived_count
+
+
 def get_archived_wagers_pending_reaction(db: Session, *, limit: int = 50):
     query = (
         db.query(models.Wager)

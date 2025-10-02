@@ -1,4 +1,6 @@
+import asyncio
 import json
+import logging
 import os
 from dataclasses import dataclass
 from decimal import Decimal
@@ -38,6 +40,33 @@ templates = Jinja2Templates(directory="app/templates")
 
 SESSION_COOKIE_NAME = "session_token"
 SESSION_SECRET = os.getenv("SESSION_SECRET") or os.getenv("ADMIN_ACCESS_KEY") or "change-me"
+
+
+def _parse_positive_int_env(var_name: str, default: int) -> int:
+    raw_value = os.getenv(var_name)
+    if raw_value is None:
+        return default
+    try:
+        parsed = int(raw_value)
+        if parsed > 0:
+            return parsed
+    except ValueError:
+        pass
+    return default
+
+
+AUTO_ARCHIVE_INTERVAL_SECONDS = _parse_positive_int_env(
+    "WAGER_AUTO_ARCHIVE_INTERVAL_SECONDS",
+    60 * 60 * 24,
+)
+AUTO_ARCHIVE_INITIAL_DELAY_SECONDS = _parse_positive_int_env(
+    "WAGER_AUTO_ARCHIVE_INITIAL_DELAY_SECONDS",
+    60,
+)
+
+logger = logging.getLogger(__name__)
+
+_archive_task: asyncio.Task | None = None
 
 templates.env.globals["admin_dashboard_path"] = "/admin/wagers"
 templates.env.globals["session_cookie_name"] = SESSION_COOKIE_NAME
@@ -152,10 +181,70 @@ def _coerce_datetime(value: object) -> datetime | None:
     return None
 
 
+def _archive_decided_wagers_sync() -> int:
+    db = SessionLocal()
+    try:
+        return crud.archive_decided_wagers(db)
+    finally:
+        db.close()
+
+
+async def _archive_decided_wagers_once() -> int:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _archive_decided_wagers_sync)
+
+
+async def _archive_scheduler():
+    if AUTO_ARCHIVE_INITIAL_DELAY_SECONDS:
+        try:
+            await asyncio.sleep(AUTO_ARCHIVE_INITIAL_DELAY_SECONDS)
+        except asyncio.CancelledError:
+            raise
+
+    while True:
+        try:
+            count = await _archive_decided_wagers_once()
+            if count:
+                logger.info("Auto-archived %s decided wagers", count)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Failed to auto-archive decided wagers")
+
+        try:
+            await asyncio.sleep(AUTO_ARCHIVE_INTERVAL_SECONDS)
+        except asyncio.CancelledError:
+            raise
+
+
 @app.on_event("startup")
 async def startup():
     init_db()
     ensure_initial_admin()
+    try:
+        count = await _archive_decided_wagers_once()
+        if count:
+            logger.info("Auto-archived %s decided wagers on startup", count)
+    except Exception:
+        logger.exception("Failed to auto-archive decided wagers during startup")
+
+    global _archive_task
+    if _archive_task is None:
+        _archive_task = asyncio.create_task(_archive_scheduler())
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    global _archive_task
+    task = _archive_task
+    if task is not None:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        finally:
+            _archive_task = None
 
 
 @app.get("/", response_class=HTMLResponse)
