@@ -58,7 +58,7 @@ def _parse_positive_int_env(var_name: str, default: int) -> int:
 
 AUTO_ARCHIVE_INTERVAL_SECONDS = _parse_positive_int_env(
     "WAGER_AUTO_ARCHIVE_INTERVAL_SECONDS",
-    60 * 60 * 24,
+    60 * 60 * 72,
 )
 AUTO_ARCHIVE_INITIAL_DELAY_SECONDS = _parse_positive_int_env(
     "WAGER_AUTO_ARCHIVE_INITIAL_DELAY_SECONDS",
