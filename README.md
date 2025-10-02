@@ -64,6 +64,12 @@ project-root/
   - Layout is centralized in `base.html`; each page extends it and receives a `request` plus context data.
   - UI actions (status toggles, archiving, deletes) use HTML forms with POST redirects to keep state on the server.
 
+- **Games hub**
+  - `/games` surfaces a rolling week of matchups for NFL, NBA, NHL, and MLB using ESPN's public scoreboards.
+  - Users can flip between leagues via tabs and jump forward/backward by week; the server fetches daily scoreboards on demand and formats them for the template.
+  - Each matchup includes ESPN BET moneylines, spreads, and totals when available so you can scan odds alongside schedule details.
+  - ESPN requests are synchronous but executed in a worker thread to keep the event loop responsive; see `services/espn.py`.
+
 - **Admin access**
   - Authentication now flows through the `auth_users` table with salted PBKDF2 password hashes. On startup the app seeds an admin record using `ADMIN_USERNAME`/`ADMIN_PASSWORD` (falling back to `ADMIN_ACCESS_KEY` for legacy setups).
   - Successful sign-in issues a signed `session_token` cookie (via `SESSION_SECRET`); the `_require_admin` helper guards all protected routes and form handlers.
@@ -109,6 +115,7 @@ Key tables and relationships (managed through SQLAlchemy and Alembic):
 - `GET /` – dashboard of active wagers by user.
 - `GET /archived` – archived wagers grouped by user.
 - `GET /stats` – aggregate win/loss and profit charts.
+- `GET /games` – weekly scoreboard browser with league tabs and week navigation.
 - `GET /admin` – admin login portal (redirects to dashboard when already authenticated).
 - `GET /admin/wagers` – admin control panel for all wagers (requires authenticated admin session).
 - API routers

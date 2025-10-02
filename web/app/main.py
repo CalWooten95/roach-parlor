@@ -8,12 +8,13 @@ from datetime import datetime, date, timedelta, timezone
 from typing import Optional
 from urllib.parse import urlencode
 
-from fastapi import FastAPI, Request, Depends, Form, HTTPException
+from fastapi import FastAPI, Request, Depends, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from .database import SessionLocal, get_db, init_db
 from . import crud, models, schemas
+from .services import espn
 from .routers import wagers
 from .routers import users
 from .routers import catalog
@@ -67,6 +68,11 @@ AUTO_ARCHIVE_INITIAL_DELAY_SECONDS = _parse_positive_int_env(
 logger = logging.getLogger(__name__)
 
 _archive_task: asyncio.Task | None = None
+
+LEAGUE_LABELS = {
+    key: key.upper()
+    for key in espn.SUPPORTED_LEAGUES
+}
 
 templates.env.globals["admin_dashboard_path"] = "/admin/wagers"
 templates.env.globals["session_cookie_name"] = SESSION_COOKIE_NAME
@@ -215,6 +221,120 @@ async def _archive_scheduler():
             await asyncio.sleep(AUTO_ARCHIVE_INTERVAL_SECONDS)
         except asyncio.CancelledError:
             raise
+
+
+def _calculate_week_start(reference: date, week_offset: int) -> date:
+    monday = reference - timedelta(days=reference.weekday())
+    return monday + timedelta(days=week_offset * 7)
+
+
+def _format_game_time(value: datetime | None) -> str:
+    if value is None:
+        return "TBD"
+    local_time = value.astimezone()
+    time_str = local_time.strftime("%I:%M %p").lstrip("0")
+    tz_abbr = local_time.strftime("%Z")
+    if tz_abbr:
+        return f"{time_str} {tz_abbr}"
+    return time_str
+
+
+def _format_decimal_value(value: float) -> str:
+    if abs(value - round(value)) < 1e-6:
+        return str(int(round(value)))
+    return f"{value:.1f}".rstrip("0").rstrip(".")
+
+
+def _format_moneyline_value(value: object) -> str | None:
+    if value is None:
+        return None
+    try:
+        number = int(round(float(value)))
+    except (TypeError, ValueError):
+        return None
+    sign = "+" if number > 0 else ""
+    return f"{sign}{number}"
+
+
+def _format_spread_value(value: object) -> str | None:
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if abs(number) < 1e-6:
+        return "PK"
+    formatted = _format_decimal_value(abs(number))
+    sign = "+" if number > 0 else "-"
+    return f"{sign}{formatted}"
+
+
+def _format_total_value(value: object) -> str | None:
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return _format_decimal_value(number)
+
+
+def _serialize_schedule(days: list[espn.DaySchedule]):
+    serialized: list[dict[str, object]] = []
+    for day in days:
+        games: list[dict[str, object]] = []
+        for game in day.games:
+            networks = ", ".join(game.networks)
+
+            serialized_teams: list[dict[str, object]] = []
+            for team in sorted(game.teams, key=lambda t: t.is_home):
+                serialized_teams.append(
+                    {
+                        "name": team.name,
+                        "abbreviation": team.abbreviation,
+                        "record": team.record,
+                        "score": team.score,
+                        "is_home": team.is_home,
+                        "logo": team.logo,
+                        "moneyline": _format_moneyline_value(team.moneyline),
+                        "spread": _format_spread_value(team.spread),
+                        "spread_odds": _format_moneyline_value(team.spread_odds),
+                        "favorite": bool(team.favorite) if team.favorite is not None else None,
+                    }
+                )
+
+            odds_info = None
+            if getattr(game, "odds", None):
+                odds_info = {
+                    "provider": game.odds.provider,
+                    "details": game.odds.details,
+                    "spread": _format_spread_value(game.odds.spread),
+                    "over_under": _format_total_value(game.odds.over_under),
+                }
+
+            games.append(
+                {
+                    "id": game.event_id,
+                    "name": game.name,
+                    "short_name": game.short_name,
+                    "status": game.status,
+                    "status_detail": game.status_detail,
+                    "start_time": _format_game_time(game.start_time),
+                    "raw_start_time": game.start_time,
+                    "venue": game.venue,
+                    "networks": networks,
+                    "teams": serialized_teams,
+                    "odds": odds_info,
+                }
+            )
+        serialized.append(
+            {
+                "day": day.day,
+                "games": games,
+            }
+        )
+    return serialized
 
 
 @app.on_event("startup")
@@ -420,6 +540,54 @@ async def view_archived(request: Request, db=Depends(get_db)):
         "archived.html",
         {"request": request, "users": users, "has_archived": has_archived},
     )
+
+
+@app.get("/games", response_class=HTMLResponse)
+async def view_games(
+    request: Request,
+    league: str = Query(espn.DEFAULT_LEAGUE),
+    week: int = Query(0),
+):
+    normalized_league = (league or espn.DEFAULT_LEAGUE).lower()
+    if normalized_league not in espn.SUPPORTED_LEAGUES:
+        normalized_league = espn.DEFAULT_LEAGUE
+
+    week_offset = week
+    reference_day = date.today()
+    week_start = _calculate_week_start(reference_day, week_offset)
+    week_end = week_start + timedelta(days=6)
+
+    schedules = await asyncio.to_thread(
+        espn.fetch_week_schedule,
+        normalized_league,
+        week_start,
+    )
+
+    schedule_days = _serialize_schedule(schedules)
+
+    context = {
+        "request": request,
+        "league": normalized_league,
+        "league_tabs": [
+            {
+                "key": key,
+                "label": LEAGUE_LABELS.get(key, key.upper()),
+                "active": key == normalized_league,
+                "url": f"/games?league={key}&week={week_offset}",
+            }
+            for key in espn.SUPPORTED_LEAGUES
+        ],
+        "week_start": week_start,
+        "week_end": week_end,
+        "week_label": f"{week_start.strftime('%b %d, %Y')} – {week_end.strftime('%b %d, %Y')}",
+        "week_offset": week_offset,
+        "prev_week": week_offset - 1,
+        "next_week": week_offset + 1,
+        "is_current_week": week_offset == 0,
+        "schedule_days": schedule_days,
+    }
+
+    return templates.TemplateResponse("games.html", context)
 
 
 @app.get("/admin", response_class=HTMLResponse)
