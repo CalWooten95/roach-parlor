@@ -133,6 +133,9 @@ class WagerBase(BaseModel):
     discord_channel_id: Optional[str] = None
     archive_reacted: Optional[bool] = False
     legs: List[WagerLeg] = Field(default_factory=list)
+    amount: Optional[float] = None
+    line: Optional[str] = None
+    is_free_play: Optional[bool] = False
 
 
 class WagerMatchupCreate(BaseModel):

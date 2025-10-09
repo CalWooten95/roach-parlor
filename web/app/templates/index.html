@@ -38,7 +38,12 @@
           <div>
             <p class="font-medium">{{ wager.description }}</p>
             <p class="text-xs text-gray-500">Placed {{ wager.created_at.strftime('%b %d, %Y') if wager.created_at else '—' }}</p>
-            <p class="text-sm text-gray-600">Amount: ${{ '{:,.2f}'.format(wager.amount) }} | Line: {{ wager.line }}</p>
+            <p class="text-sm text-gray-600">
+              Amount: ${{ '{:,.2f}'.format(wager.amount) }} | Line: {{ wager.line }}
+              {% if wager.is_free_play %}
+              <span class="inline-flex items-center px-2 py-0.5 ml-2 rounded-full bg-purple-100 text-purple-700 text-xs font-semibold">FREE PLAY</span>
+              {% endif %}
+            </p>
             {% if wager.payout is not none %}
             <p class="text-sm text-gray-600">Payout: ${{ '{:,.2f}'.format(wager.payout) }}</p>
             {% endif %}

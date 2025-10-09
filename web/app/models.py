@@ -136,6 +136,12 @@ class Wager(Base):
     description = Column(Text)
     amount = Column(Numeric(12, 2))            # <-- Add this
     line = Column(String)               # <-- And this
+    is_free_play = Column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=expression.false(),
+    )
     image_url = Column(String, nullable=True)
     status = Column(Enum(WagerStatus), default=WagerStatus.open)
     archived = Column(Boolean, default=False, nullable=False, server_default=expression.false())

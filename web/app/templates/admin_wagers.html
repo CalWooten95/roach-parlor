@@ -69,6 +69,9 @@
               <p class="font-semibold">#{{ wager.id }} · {{ wager.description }}</p>
               <p class="text-xs text-gray-500">
                 Created {{ wager.created_at.strftime('%b %d, %Y %I:%M %p') if wager.created_at else '—' }} · Amount ${{ '{:,.2f}'.format(amount_value) }} · Line {{ wager.line or '—' }}
+                {% if wager.is_free_play %}
+                · <span class="inline-flex items-center px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-semibold">Free Play</span>
+                {% endif %}
               </p>
             </div>
             <div class="flex items-center gap-3 text-sm">
@@ -78,6 +81,9 @@
               <span class="px-3 py-1 rounded-full {% if wager.archived %}bg-yellow-100 text-yellow-700{% else %}bg-gray-100 text-gray-600{% endif %}">
                 {{ 'ARCHIVED' if wager.archived else 'ACTIVE' }}
               </span>
+              {% if wager.is_free_play %}
+              <span class="px-3 py-1 rounded-full bg-purple-100 text-purple-700">FREE PLAY</span>
+              {% endif %}
             </div>
           </summary>
 
@@ -87,6 +93,7 @@
               <p><span class="font-semibold text-gray-700">Wager ID:</span> {{ wager.id }}</p>
               <p><span class="font-semibold text-gray-700">Line:</span> {{ wager.line or '—' }}</p>
               <p><span class="font-semibold text-gray-700">Amount:</span> ${{ '{:,.2f}'.format(amount_value) }}</p>
+              <p><span class="font-semibold text-gray-700">Free Play:</span> {{ 'Yes' if wager.is_free_play else 'No' }}</p>
               <p><span class="font-semibold text-gray-700">Payout:</span> {% if wager.payout is not none %}${{ '{:,.2f}'.format(wager.payout) }}{% else %}—{% endif %}</p>
               <p><span class="font-semibold text-gray-700">Created:</span> {{ wager.created_at.strftime('%Y-%m-%d %H:%M') if wager.created_at else '—' }}</p>
             </div>
@@ -206,6 +213,14 @@
                     {% endfor %}
                   </select>
                 </label>
+                <div class="block">
+                  <span class="text-xs font-medium text-gray-600">Free Play</span>
+                  <input type="hidden" name="free_play_present" value="1">
+                  <label class="mt-1 inline-flex items-center gap-2 text-sm text-gray-600">
+                    <input type="checkbox" name="is_free_play" value="true" class="h-4 w-4" {% if wager.is_free_play %}checked{% endif %}>
+                    <span>Exclude from staked totals</span>
+                  </label>
+                </div>
               </div>
               <label class="block">
                 <span class="text-xs font-medium text-gray-600">Created At (UTC)</span>

@@ -167,6 +167,8 @@ def _wager_profit_delta(wager: models.Wager) -> Decimal:
         payout = wager.payout or 0
         return Decimal(str(payout))
     if status == models.WagerStatus.lost.value:
+        if getattr(wager, "is_free_play", False):
+            return Decimal("0")
         return -amount
     return Decimal("0")
 
@@ -419,7 +421,8 @@ async def view_stats(request: Request, db=Depends(get_db)):
             status = _normalize_wager_status(wager)
             amount_raw = wager.amount if wager.amount is not None else Decimal("0")
             amount = Decimal(str(amount_raw))
-            total_staked += amount
+            if not getattr(wager, "is_free_play", False):
+                total_staked += amount
 
             if getattr(wager, "archived", False):
                 archived_count += 1
@@ -774,6 +777,8 @@ async def admin_edit_wager(
     line: str | None = Form(None),
     status: str | None = Form(None),
     archived: str | None = Form(None),
+    free_play_present: str | None = Form(None),
+    is_free_play: str | None = Form(None),
     created_at: str | None = Form(None),
     redirect_to: str = Form("/admin/wagers"),
     db=Depends(get_db),
@@ -795,6 +800,11 @@ async def admin_edit_wager(
             parsed = parsed.replace(tzinfo=timezone.utc)
         created_at_dt = parsed
 
+    free_play_flag = None
+    if free_play_present is not None:
+        normalized_free_play = (is_free_play or "").strip().lower()
+        free_play_flag = normalized_free_play in {"true", "1", "yes", "on"}
+
     crud.update_wager_details(
         db,
         wager_id,
@@ -803,6 +813,7 @@ async def admin_edit_wager(
         line=line,
         status=status,
         archived=archived_flag,
+        is_free_play=free_play_flag,
         created_at=created_at_dt,
     )
 

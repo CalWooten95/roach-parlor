@@ -70,7 +70,8 @@ def ensure_user_and_get_id(author: discord.User | discord.Member) -> int:
 SYSTEM_PROMPT = (
     "You extract structured data from sports wager screenshots. "
     "Return STRICT JSON with keys: description (string), amount (number), line (string), legs (array), "
-    "league_key (string), home_team (object|null), away_team (object|null), is_live_bet (boolean). "
+    "league_key (string), home_team (object|null), away_team (object|null), is_live_bet (boolean), "
+    "is_free_play (boolean). "
     "Each leg object must contain description (string) and status (open|won|lost). "
     "Default status is 'open' unless the ticket clearly shows otherwise. "
     "- For parlays: include one leg per selection with concise descriptions. "
@@ -78,6 +79,8 @@ SYSTEM_PROMPT = (
     "- For single bets: still include one leg describing the wager. "
     "- For player props: include player, stat, and threshold in the leg description. "
     "- Amount must be the stake ('Risk'). "
+    "- Set is_free_play to true when the ticket or accompanying text clearly marks the wager as a free play, "
+    "  free bet, bonus bet, or similar; otherwise false. Free play wagers still include the stake amount shown on the slip. "
     "- When the slip shows both 'Risk' and 'Win' or 'To Win', always derive the American odds from those values "
     "  (treat 'Win' as profit, not total payout). If Win >= Risk, line = +(Win / Risk * 100); otherwise line = -(Risk / Win * 100). "
     "  After computing, round to the nearest 5 and clamp positive odds to at least +100 and negative odds to at most -100. "
@@ -145,6 +148,14 @@ def parse_wager_from_image(image_url: str, *, extra_context: str | None = None) 
     else:
         is_live_bet = False
 
+    free_play_raw = data.get("is_free_play")
+    if isinstance(free_play_raw, bool):
+        is_free_play = free_play_raw
+    elif isinstance(free_play_raw, str):
+        is_free_play = free_play_raw.strip().lower() in {"true", "yes", "1"}
+    else:
+        is_free_play = None
+
     raw_legs = data.get("legs") or []
     legs: List[Dict[str, str]] = []
     for leg in raw_legs:
@@ -172,6 +183,34 @@ def parse_wager_from_image(image_url: str, *, extra_context: str | None = None) 
     if not is_live_bet and text and re.search(r"\blive(\s+bet)?\b", text, flags=re.I):
         is_live_bet = True
 
+    def _contains_free_play(value: str | None) -> bool:
+        if not value:
+            return False
+        return bool(
+            re.search(
+                r"\bfree\s*play\b|\bfree\s*bet\b|\bbonus\s*bet\b|\bbonus\s*wager\b",
+                value,
+                flags=re.I,
+            )
+        )
+
+    fallback_free_play = any(
+        _contains_free_play(piece)
+        for piece in (
+            description,
+            line,
+            " ".join(leg["description"] for leg in legs),
+            extra_context,
+            searchable_text,
+            text,
+        )
+    )
+
+    if is_free_play is None:
+        is_free_play = fallback_free_play
+    elif not is_free_play and fallback_free_play:
+        is_free_play = True
+
     league_key = str(data.get("league_key") or data.get("league") or "").strip().lower()
 
     def _team_dict(raw: Any) -> Dict[str, str]:
@@ -195,6 +234,7 @@ def parse_wager_from_image(image_url: str, *, extra_context: str | None = None) 
         "home_team": home_team,
         "away_team": away_team,
         "is_live_bet": is_live_bet,
+        "is_free_play": bool(is_free_play),
     }
 
 
@@ -352,6 +392,7 @@ def create_wager(
     description: str,
     amount: float,
     line: str,
+    is_free_play: bool = False,
     legs: Optional[List[Dict[str, str]]] = None,
     matchup: Optional[Dict[str, int]] = None,
     discord_message_id: Optional[str] = None,
@@ -362,6 +403,7 @@ def create_wager(
         "description": description,
         "amount": amount,
         "line": line,
+        "is_free_play": bool(is_free_play),
         "legs": legs or [],
     }
     if matchup:
@@ -545,6 +587,7 @@ async def on_message(message: discord.Message):
                         description = f"{LIVE_PREFIX}{description}"
                     amount = float(parsed["amount"] or 0)
                     line = parsed["line"] or ""
+                    is_free_play = bool(parsed.get("is_free_play"))
 
                     matchup, matchup_notes = resolve_matchup_ids(parsed)
                     create_wager(
@@ -552,6 +595,7 @@ async def on_message(message: discord.Message):
                         description=description,
                         amount=amount,
                         line=line,
+                        is_free_play=is_free_play,
                         legs=parsed["legs"],
                         matchup=matchup,
                         discord_message_id=str(message.id),
@@ -567,6 +611,8 @@ async def on_message(message: discord.Message):
                         f"• **Amount:** ${amount:.2f}",
                         f"• **Line:** {line or '(unknown)'}",
                     ]
+                    if is_free_play:
+                        block_lines.append("• **Type:** Free Play")
                     if leg_lines:
                         block_lines.append("• **Legs:**\n" + leg_lines)
                     if matchup_notes:

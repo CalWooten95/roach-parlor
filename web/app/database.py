@@ -46,6 +46,11 @@ def init_db():
                 text("ALTER TABLE wagers ADD COLUMN archive_reacted BOOLEAN NOT NULL DEFAULT FALSE")
             )
             wager_column_names.add("archive_reacted")
+        if "is_free_play" not in wager_column_names:
+            conn.execute(
+                text("ALTER TABLE wagers ADD COLUMN is_free_play BOOLEAN NOT NULL DEFAULT FALSE")
+            )
+            wager_column_names.add("is_free_play")
 
         user_columns = inspector.get_columns("users")
         if not any(column["name"] == "tracked" for column in user_columns):

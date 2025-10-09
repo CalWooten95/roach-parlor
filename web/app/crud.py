@@ -150,6 +150,7 @@ def create_wager(
     description: str,
     amount: float,
     line: str,
+    is_free_play: bool = False,
     legs: list[dict] | None = None,
     matchup: dict | None = None,
     archived: bool = False,
@@ -166,6 +167,7 @@ def create_wager(
         description=description,
         amount=amount_value,
         line=line,
+        is_free_play=bool(is_free_play),
         archived=archived,
         discord_message_id=discord_message_id,
         discord_channel_id=discord_channel_id,
@@ -295,6 +297,7 @@ def update_wager_details(
     line: str | None = None,
     status: str | None = None,
     archived: bool | None = None,
+    is_free_play: bool | None = None,
     created_at: datetime | None = None,
 ):
     wager = db.query(models.Wager).filter(models.Wager.id == wager_id).first()
@@ -322,6 +325,9 @@ def update_wager_details(
 
     if archived is not None:
         wager.archived = bool(archived)
+
+    if is_free_play is not None:
+        wager.is_free_play = bool(is_free_play)
 
     if created_at is not None:
         wager.created_at = created_at
