@@ -9,7 +9,8 @@ from typing import Optional
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Request, Depends, Form, HTTPException, Query
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
+import requests
 from fastapi.templating import Jinja2Templates
 
 from .database import SessionLocal, get_db, init_db
@@ -41,6 +42,16 @@ templates = Jinja2Templates(directory="app/templates")
 
 SESSION_COOKIE_NAME = "session_token"
 SESSION_SECRET = os.getenv("SESSION_SECRET") or os.getenv("ADMIN_ACCESS_KEY") or "change-me"
+AI_PROXY_BASE_URL = (os.getenv("AI_PROXY_BASE_URL") or "http://40netse.fortiddns.com:3002/").rstrip("/")
+AI_PROXY_PATH_PREFIXES: tuple[str, ...] = (
+    "@vite",
+    "@react-refresh",
+    "src",
+    "assets",
+    "node_modules",
+    "vite.svg",
+    "api",
+)
 
 
 def _parse_positive_int_env(var_name: str, default: int) -> int:
@@ -130,6 +141,59 @@ def _attach_session_cookie(response: RedirectResponse, user_id: int) -> Redirect
 def _clear_session_cookie(response: RedirectResponse) -> RedirectResponse:
     response.delete_cookie(SESSION_COOKIE_NAME, samesite="lax")
     return response
+
+
+def _should_proxy_ai_path(path: str) -> bool:
+    normalized = (path or "").lstrip("/")
+    if not normalized:
+        return False
+    for prefix in AI_PROXY_PATH_PREFIXES:
+        if normalized == prefix or normalized.startswith(f"{prefix.rstrip('/')}/"):
+            return True
+    return False
+
+
+def _build_ai_proxy_url(path: str, query_string: str | None) -> str:
+    normalized_path = path or "/"
+    if not normalized_path.startswith("/"):
+        normalized_path = f"/{normalized_path}"
+    base = AI_PROXY_BASE_URL
+    if normalized_path == "/" and base.endswith("/"):
+        target = base
+    else:
+        target = f"{base.rstrip('/')}{normalized_path}"
+    if query_string:
+        target = f"{target}?{query_string}"
+    return target
+
+
+async def _proxy_ai_content(path: str, request: Request) -> Response:
+    if not AI_PROXY_BASE_URL:
+        raise HTTPException(status_code=503, detail="AI proxy is not configured")
+
+    target_url = _build_ai_proxy_url(path, request.url.query)
+
+    def _fetch():
+        return requests.get(target_url, timeout=20)
+
+    try:
+        upstream = await asyncio.to_thread(_fetch)
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to reach AI proxy: {exc}") from exc
+
+    media_type = upstream.headers.get("content-type")
+    forward_headers: dict[str, str] = {}
+    for header in ("cache-control", "content-language", "expires", "last-modified"):
+        value = upstream.headers.get(header)
+        if value:
+            forward_headers[header] = value
+
+    return Response(
+        content=upstream.content,
+        status_code=upstream.status_code,
+        media_type=media_type,
+        headers=forward_headers,
+    )
 
 @app.middleware("http")
 async def populate_authenticated_user(request: Request, call_next):
@@ -527,6 +591,28 @@ async def view_stats(request: Request, db=Depends(get_db)):
     )
 
 
+@app.get("/ai-tools", response_class=HTMLResponse)
+async def view_ai_tools(request: Request):
+    return templates.TemplateResponse(
+        "ai_tools.html",
+        {
+            "request": request,
+            "ai_proxy_configured": bool(AI_PROXY_BASE_URL),
+        },
+    )
+
+
+@app.get("/ai-tools/proxy")
+async def proxy_ai_root(request: Request):
+    return await _proxy_ai_content("/", request)
+
+
+@app.get("/ai-tools/proxy/{resource_path:path}")
+async def proxy_ai_resource(resource_path: str, request: Request):
+    path = f"/{resource_path.lstrip('/')}" if resource_path else "/"
+    return await _proxy_ai_content(path, request)
+
+
 @app.get("/archived", response_class=HTMLResponse)
 async def view_archived(request: Request, db=Depends(get_db)):
     users = crud.get_users_with_wagers(db)
@@ -835,3 +921,11 @@ async def admin_delete_wager(
     crud.delete_wager(db, wager_id)
     target = redirect_to or "/admin/wagers"
     return RedirectResponse(target, status_code=303)
+
+
+@app.get("/{proxy_path:path}", include_in_schema=False)
+async def proxy_ai_prefixed_paths(proxy_path: str, request: Request):
+    if _should_proxy_ai_path(proxy_path):
+        normalized = proxy_path if proxy_path.startswith("/") else f"/{proxy_path}"
+        return await _proxy_ai_content(normalized, request)
+    raise HTTPException(status_code=404, detail="Not Found")

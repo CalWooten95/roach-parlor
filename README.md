@@ -114,6 +114,7 @@ Key tables and relationships (managed through SQLAlchemy and Alembic):
 
 - `GET /` – dashboard of active wagers by user.
 - `GET /archived` – archived wagers grouped by user.
+- `GET /ai-tools` – proxied view of the private AI bet analysis tool.
 - `GET /stats` – aggregate win/loss and profit charts.
 - `GET /games` – weekly scoreboard browser with league tabs and week navigation.
 - `GET /admin` – admin login portal (redirects to dashboard when already authenticated).
@@ -137,6 +138,7 @@ Key tables and relationships (managed through SQLAlchemy and Alembic):
 | `ADMIN_USERNAME` | web | Username for the seeded admin account (`admin` by default). |
 | `ADMIN_PASSWORD` | web | Password for the seeded admin account. If omitted, the value of `ADMIN_ACCESS_KEY` is reused. |
 | `ADMIN_ACCESS_KEY` | web | Legacy fallback for environments that still rely on a shared key; safe to drop once the new vars are set. |
+| `AI_PROXY_BASE_URL` | web | Optional override for the remote AI insights app URL that `/ai-tools` relays (defaults to `http://40netse.fortiddns.com:3002/`). |
 | `POSTGRES_PASSWORD` etc. | db | Postgres credentials (see `docker-compose.yml`). |
 | `DISCORD_TOKEN` | bot | Discord bot authentication token. |
 | `OPENAI_API_KEY` | bot | Key for OpenAI Responses API. |

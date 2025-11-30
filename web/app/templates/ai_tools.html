@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="bg-white rounded-xl shadow p-6 mb-8">
+  <div class="flex flex-col gap-2 mb-4">
+    <h2 class="text-2xl font-semibold text-gray-800">AI Bet Insights</h2>
+    <p class="text-gray-600 text-sm">
+      This page securely relays the private AI analysis tool hosted by your trusted source. All traffic flows through this server so your friend's endpoint only sees a single whitelisted IP.
+    </p>
+    {% if not ai_proxy_configured %}
+    <p class="text-red-600 text-sm">AI proxy is not currently configured.</p>
+    {% endif %}
+  </div>
+  <div class="border rounded-lg overflow-hidden bg-gray-50">
+    <iframe
+      src="/ai-tools/proxy"
+      class="w-full"
+      style="min-height: 80vh;"
+      title="AI Bet Insights"
+      loading="lazy"
+    ></iframe>
+  </div>
+</section>
+{% endblock %}
