@@ -88,6 +88,14 @@ LEAGUE_LABELS = {
 templates.env.globals["admin_dashboard_path"] = "/admin/wagers"
 templates.env.globals["session_cookie_name"] = SESSION_COOKIE_NAME
 
+STATS_WINDOW_OPTIONS: dict[str, dict[str, object]] = {
+    "30": {"label": "30 Days", "days": 30},
+    "90": {"label": "90 Days", "days": 90},
+    "180": {"label": "180 Days", "days": 180},
+    "365": {"label": "1 Year", "days": 365},
+}
+DEFAULT_STATS_WINDOW = "30"
+
 
 def _current_user(request: Request) -> Optional[AuthenticatedUser]:
     user = getattr(request.state, "auth_user", None)
@@ -460,12 +468,17 @@ async def view_catalog(request: Request, db=Depends(get_db)):
 
 @app.get("/stats", response_class=HTMLResponse)
 async def view_stats(request: Request, db=Depends(get_db)):
+    requested_window = request.query_params.get("range", DEFAULT_STATS_WINDOW)
+    if requested_window not in STATS_WINDOW_OPTIONS:
+        requested_window = DEFAULT_STATS_WINDOW
+    window_config = STATS_WINDOW_OPTIONS[requested_window]
+    window_days = int(window_config["days"])
     users = [user for user in crud.get_users_with_wagers(db) if getattr(user, "tracked", True)]
     player_stats: list[dict[str, object]] = []
     profit_datasets: list[dict[str, object]] = []
     bet_datasets: list[dict[str, object]] = []
     window_end = date.today()
-    window_start = window_end - timedelta(days=29)
+    window_start = window_end - timedelta(days=window_days - 1)
 
     for user in users:
         wagers = sorted(
@@ -587,6 +600,12 @@ async def view_stats(request: Request, db=Depends(get_db)):
             "player_stats": player_stats,
             "chart_payload": chart_payload,
             "has_chart": bool(profit_datasets or bet_datasets),
+            "selected_range": requested_window,
+            "range_options": [
+                {"key": key, "label": config["label"]}
+                for key, config in STATS_WINDOW_OPTIONS.items()
+            ],
+            "range_label": window_config["label"],
         },
     )
 

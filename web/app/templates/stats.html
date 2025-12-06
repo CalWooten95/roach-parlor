@@ -40,7 +40,19 @@
   </table>
 </div>
 
-<h2 class="text-xl font-semibold mb-3">Performance Over The Last 30 Days</h2>
+<div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-3">
+  <h2 class="text-xl font-semibold">Performance Over The Last {{ range_label }}</h2>
+  <div class="flex flex-wrap items-center gap-2 text-sm font-medium">
+    {% for option in range_options %}
+    {% set is_active = option.key == selected_range %}
+    <a href="{{ url_for('view_stats') }}?range={{ option.key }}"
+       class="range-tab px-3 py-1.5 rounded-full {{ 'bg-blue-600 text-white' if is_active else 'bg-gray-200 text-gray-700' }}"
+       aria-pressed="{{ 'true' if is_active else 'false' }}">
+      {{ option.label }}
+    </a>
+    {% endfor %}
+  </div>
+</div>
 {% if has_chart %}
 <div class="flex items-center gap-2 mb-3">
   <button type="button" data-chart="profit" aria-pressed="true"
