@@ -142,6 +142,12 @@ class Wager(Base):
         default=False,
         server_default=expression.false(),
     )
+    is_live_bet = Column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=expression.false(),
+    )
     image_url = Column(String, nullable=True)
     status = Column(Enum(WagerStatus), default=WagerStatus.open)
     archived = Column(Boolean, default=False, nullable=False, server_default=expression.false())

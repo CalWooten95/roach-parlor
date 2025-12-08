@@ -501,6 +501,8 @@ async def view_stats(request: Request, db=Depends(get_db)):
             "description": description,
             "status": status_value,
             "amount": float(amount_value),
+            "is_free_play": bool(getattr(wager, "is_free_play", False)),
+            "is_live_bet": bool(getattr(wager, "is_live_bet", False)),
         }
         if profit_value is None:
             detail["profit"] = None
@@ -950,6 +952,8 @@ async def admin_edit_wager(
     archived: str | None = Form(None),
     free_play_present: str | None = Form(None),
     is_free_play: str | None = Form(None),
+    live_bet_present: str | None = Form(None),
+    is_live_bet: str | None = Form(None),
     created_at: str | None = Form(None),
     redirect_to: str = Form("/admin/wagers"),
     db=Depends(get_db),
@@ -976,6 +980,11 @@ async def admin_edit_wager(
         normalized_free_play = (is_free_play or "").strip().lower()
         free_play_flag = normalized_free_play in {"true", "1", "yes", "on"}
 
+    live_bet_flag = None
+    if live_bet_present is not None:
+        normalized_live = (is_live_bet or "").strip().lower()
+        live_bet_flag = normalized_live in {"true", "1", "yes", "on"}
+
     crud.update_wager_details(
         db,
         wager_id,
@@ -985,6 +994,7 @@ async def admin_edit_wager(
         status=status,
         archived=archived_flag,
         is_free_play=free_play_flag,
+        is_live_bet=live_bet_flag,
         created_at=created_at_dt,
     )
 

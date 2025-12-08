@@ -393,6 +393,7 @@ def create_wager(
     amount: float,
     line: str,
     is_free_play: bool = False,
+    is_live_bet: bool = False,
     legs: Optional[List[Dict[str, str]]] = None,
     matchup: Optional[Dict[str, int]] = None,
     discord_message_id: Optional[str] = None,
@@ -404,6 +405,7 @@ def create_wager(
         "amount": amount,
         "line": line,
         "is_free_play": bool(is_free_play),
+        "is_live_bet": bool(is_live_bet),
         "legs": legs or [],
     }
     if matchup:
@@ -588,6 +590,7 @@ async def on_message(message: discord.Message):
                     amount = float(parsed["amount"] or 0)
                     line = parsed["line"] or ""
                     is_free_play = bool(parsed.get("is_free_play"))
+                    is_live_bet = bool(parsed.get("is_live_bet"))
 
                     matchup, matchup_notes = resolve_matchup_ids(parsed)
                     create_wager(
@@ -596,6 +599,7 @@ async def on_message(message: discord.Message):
                         amount=amount,
                         line=line,
                         is_free_play=is_free_play,
+                        is_live_bet=is_live_bet,
                         legs=parsed["legs"],
                         matchup=matchup,
                         discord_message_id=str(message.id),

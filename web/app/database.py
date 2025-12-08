@@ -51,6 +51,11 @@ def init_db():
                 text("ALTER TABLE wagers ADD COLUMN is_free_play BOOLEAN NOT NULL DEFAULT FALSE")
             )
             wager_column_names.add("is_free_play")
+        if "is_live_bet" not in wager_column_names:
+            conn.execute(
+                text("ALTER TABLE wagers ADD COLUMN is_live_bet BOOLEAN NOT NULL DEFAULT FALSE")
+            )
+            wager_column_names.add("is_live_bet")
         if "resulted_at" not in wager_column_names:
             conn.execute(
                 text("ALTER TABLE wagers ADD COLUMN resulted_at TIMESTAMP WITH TIME ZONE NULL")

@@ -136,6 +136,7 @@ class WagerBase(BaseModel):
     amount: Optional[float] = None
     line: Optional[str] = None
     is_free_play: Optional[bool] = False
+    is_live_bet: Optional[bool] = False
 
 
 class WagerMatchupCreate(BaseModel):

@@ -69,6 +69,7 @@ class WagerCreate(BaseModel):
     amount: float
     line: str
     is_free_play: bool = False
+    is_live_bet: bool = False
     legs: list[WagerLegPayload] | None = None
     matchup: WagerMatchupPayload | None = None
     archived: bool | None = False
@@ -86,6 +87,7 @@ class WagerOut(BaseModel):
     archived: bool
     archive_reacted: bool
     is_free_play: bool
+    is_live_bet: bool
     resulted_at: datetime | None = None
     discord_message_id: str | None = None
     discord_channel_id: str | None = None
@@ -127,6 +129,7 @@ def create_wager(wager: WagerCreate, db: Session = Depends(database.get_db)):
         amount=wager.amount,
         line=wager.line,
         is_free_play=wager.is_free_play,
+        is_live_bet=wager.is_live_bet,
         legs=legs,
         matchup=matchup,
         archived=bool(wager.archived),
