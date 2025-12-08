@@ -86,6 +86,7 @@ class WagerOut(BaseModel):
     archived: bool
     archive_reacted: bool
     is_free_play: bool
+    resulted_at: datetime | None = None
     discord_message_id: str | None = None
     discord_channel_id: str | None = None
     payout: float | None = None

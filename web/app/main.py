@@ -466,6 +466,12 @@ async def view_catalog(request: Request, db=Depends(get_db)):
     )
 
 
+DECIDED_WAGER_STATUSES = {
+    models.WagerStatus.won.value,
+    models.WagerStatus.lost.value,
+}
+
+
 @app.get("/stats", response_class=HTMLResponse)
 async def view_stats(request: Request, db=Depends(get_db)):
     requested_window = request.query_params.get("range", DEFAULT_STATS_WINDOW)
@@ -480,6 +486,28 @@ async def view_stats(request: Request, db=Depends(get_db)):
     window_end = date.today()
     window_start = window_end - timedelta(days=window_days - 1)
 
+    def _serialize_wager_detail(
+        wager: models.Wager,
+        *,
+        amount_value: Decimal,
+        status_value: str,
+        profit_value: Decimal | None,
+    ) -> dict[str, object]:
+        description = (wager.description or "").strip()
+        if not description:
+            description = f"Wager #{wager.id}"
+        detail: dict[str, object] = {
+            "id": wager.id,
+            "description": description,
+            "status": status_value,
+            "amount": float(amount_value),
+        }
+        if profit_value is None:
+            detail["profit"] = None
+        else:
+            detail["profit"] = float(profit_value)
+        return detail
+
     for user in users:
         wagers = sorted(
             user.wagers,
@@ -491,7 +519,9 @@ async def view_stats(request: Request, db=Depends(get_db)):
         total_profit = Decimal("0")
         archived_count = 0
         daily_profit: dict[date, Decimal] = {}
+        daily_profit_details: dict[date, list[dict[str, object]]] = {}
         daily_bets: dict[date, int] = {}
+        daily_bet_details: dict[date, list[dict[str, object]]] = {}
         profit_before_window = Decimal("0")
 
         for wager in wagers:
@@ -520,15 +550,39 @@ async def view_stats(request: Request, db=Depends(get_db)):
             if created_at is None and getattr(wager, "matchup", None):
                 created_at = _coerce_datetime(getattr(wager.matchup, "scheduled_at", None))
 
-            if created_at is not None:
-                day = created_at.date()
-                if day < window_start:
+            placed_day = created_at.date() if created_at else None
+            if placed_day is not None and window_start <= placed_day <= window_end:
+                detail = _serialize_wager_detail(
+                    wager,
+                    amount_value=amount,
+                    status_value=status,
+                    profit_value=None,
+                )
+                daily_bets.setdefault(placed_day, 0)
+                daily_bets[placed_day] += 1
+                daily_bet_details.setdefault(placed_day, []).append(detail)
+
+            result_datetime = _coerce_datetime(getattr(wager, "resulted_at", None))
+            if result_datetime is None and status in DECIDED_WAGER_STATUSES and getattr(wager, "matchup", None):
+                result_datetime = _coerce_datetime(getattr(wager.matchup, "scheduled_at", None))
+            result_day = result_datetime.date() if result_datetime else placed_day
+            if result_day is not None:
+                if result_day < window_start:
                     profit_before_window += profit_delta
                     continue
-                if day > window_end:
-                    day = window_end
-                daily_bets[day] = daily_bets.get(day, 0) + 1
-                daily_profit[day] = daily_profit.get(day, Decimal("0")) + profit_delta
+                if result_day > window_end:
+                    result_day = window_end
+                daily_profit[result_day] = daily_profit.get(result_day, Decimal("0")) + profit_delta
+                daily_profit_details.setdefault(result_day, []).append(
+                    _serialize_wager_detail(
+                        wager,
+                        amount_value=amount,
+                        status_value=status,
+                        profit_value=profit_delta,
+                    )
+                )
+            elif profit_delta:
+                profit_before_window += profit_delta
 
         decided = wins + losses
         win_rate = float((wins / decided) * 100) if decided else 0.0
@@ -555,7 +609,13 @@ async def view_stats(request: Request, db=Depends(get_db)):
             while current_day <= window_end:
                 delta = daily_profit.get(current_day, Decimal("0"))
                 running_total += delta
-                profit_points.append({"x": current_day.isoformat(), "y": float(running_total)})
+                profit_points.append(
+                    {
+                        "x": current_day.isoformat(),
+                        "y": float(running_total),
+                        "bets": daily_profit_details.get(current_day, []),
+                    }
+                )
                 current_day += timedelta(days=1)
             profit_datasets.append(
                 {
@@ -571,7 +631,13 @@ async def view_stats(request: Request, db=Depends(get_db)):
             current_day = window_start
             while current_day <= window_end:
                 value = daily_bets.get(current_day, 0)
-                bet_points.append({"x": current_day.isoformat(), "y": value})
+                bet_points.append(
+                    {
+                        "x": current_day.isoformat(),
+                        "y": value,
+                        "bets": daily_bet_details.get(current_day, []),
+                    }
+                )
                 current_day += timedelta(days=1)
             bet_datasets.append(
                 {

@@ -165,6 +165,7 @@ class Wager(WagerBase):
     id: int
     user_id: int
     created_at: Optional[str]
+    resulted_at: Optional[str] = None
     matchup: Optional[WagerMatchup] = None
 
     class Config:

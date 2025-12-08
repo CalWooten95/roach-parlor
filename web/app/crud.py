@@ -1,8 +1,13 @@
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from sqlalchemy.orm import Session, selectinload
 from . import models
+
+DECIDED_WAGER_STATUSES = {
+    models.WagerStatus.won,
+    models.WagerStatus.lost,
+}
 
 
 def _prepare_legs(wager: models.Wager, legs: list[dict]):
@@ -251,11 +256,28 @@ def update_wager_status(db: Session, wager_id: int, new_status: str):
     if not wager:
         return None
 
-    # Toggle: if same status is clicked again → reset to open
-    if wager.status == new_status:
-        wager.status = models.WagerStatus.open
+    if isinstance(wager.status, models.WagerStatus):
+        current_status = wager.status
     else:
-        wager.status = new_status
+        try:
+            current_status = models.WagerStatus(wager.status)
+        except ValueError:
+            current_status = models.WagerStatus.open
+
+    # Toggle: if same status is clicked again → reset to open
+    if current_status.value == new_status:
+        wager.status = models.WagerStatus.open
+        wager.resulted_at = None
+    else:
+        try:
+            normalized_status = models.WagerStatus(new_status)
+        except ValueError:
+            normalized_status = models.WagerStatus.open
+        wager.status = normalized_status
+        if normalized_status in DECIDED_WAGER_STATUSES:
+            wager.resulted_at = datetime.now(timezone.utc)
+        else:
+            wager.resulted_at = None
 
     db.commit()
     db.refresh(wager)
@@ -318,8 +340,19 @@ def update_wager_details(
         wager.line = line
 
     if status is not None:
+        if isinstance(wager.status, models.WagerStatus):
+            previous_status = wager.status
+        else:
+            try:
+                previous_status = models.WagerStatus(wager.status)
+            except ValueError:
+                previous_status = models.WagerStatus.open
         try:
             wager.status = models.WagerStatus(status)
+            if wager.status in DECIDED_WAGER_STATUSES and previous_status != wager.status:
+                wager.resulted_at = datetime.now(timezone.utc)
+            elif wager.status not in DECIDED_WAGER_STATUSES:
+                wager.resulted_at = None
         except ValueError:
             pass
 

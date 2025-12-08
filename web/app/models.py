@@ -149,6 +149,7 @@ class Wager(Base):
     discord_channel_id = Column(String, nullable=True)
     archive_reacted = Column(Boolean, default=False, nullable=False, server_default=expression.false())
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    resulted_at = Column(DateTime(timezone=True), nullable=True)
 
     user = relationship("User", back_populates="wagers")
     legs = relationship("WagerLeg", back_populates="wager", cascade="all, delete-orphan")

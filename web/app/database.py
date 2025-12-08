@@ -51,6 +51,11 @@ def init_db():
                 text("ALTER TABLE wagers ADD COLUMN is_free_play BOOLEAN NOT NULL DEFAULT FALSE")
             )
             wager_column_names.add("is_free_play")
+        if "resulted_at" not in wager_column_names:
+            conn.execute(
+                text("ALTER TABLE wagers ADD COLUMN resulted_at TIMESTAMP WITH TIME ZONE NULL")
+            )
+            wager_column_names.add("resulted_at")
 
         user_columns = inspector.get_columns("users")
         if not any(column["name"] == "tracked" for column in user_columns):
