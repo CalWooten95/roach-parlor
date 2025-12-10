@@ -109,18 +109,32 @@
     const sign = value < 0 ? '-' : '';
     return `${sign}$${Math.abs(value).toFixed(2)}`;
   };
+  const formatStatusLabel = (status) => {
+    const normalized = typeof status === 'string' ? status.toLowerCase() : '';
+    const mapping = {
+      won: {text: 'Won', className: 'text-green-600 font-semibold'},
+      lost: {text: 'Lost', className: 'text-red-500 font-semibold'},
+      open: {text: 'Open', className: 'text-gray-600 font-medium'},
+      removed: {text: 'Removed', className: 'text-gray-500 font-medium'},
+    };
+    const meta = mapping[normalized] || {text: 'Pending', className: 'text-gray-500 text-xs font-medium'};
+    return `<span class="${meta.className}">${escapeHtml(meta.text)}</span>`;
+  };
   const buildDetailMarkup = (details) => {
     if (!details.length) {
       return '<div class="text-xs text-gray-500">No bets recorded for this day.</div>';
     }
     return details.map((detail) => {
-      const profit = typeof detail.profit === 'number' ? detail.profit : null;
-      let profitLabel = '<span class="text-gray-500 text-xs font-medium">Pending</span>';
-      if (profit !== null) {
-        const prefix = profit >= 0 ? '+' : '-';
-        const color = profit >= 0 ? 'text-green-600' : 'text-red-500';
-        profitLabel = `<span class="${color} font-semibold">${prefix}${formatCurrency(Math.abs(profit))}</span>`;
-      }
+      const statusLabel = formatStatusLabel(detail.status);
+      const profit = typeof detail.profit === 'number' && !Number.isNaN(detail.profit) ? detail.profit : null;
+      const showProfit = profit !== null && ['won', 'lost'].includes((detail.status || '').toLowerCase());
+      const profitLabel = showProfit
+        ? (() => {
+            const prefix = profit >= 0 ? '+' : '-';
+            const color = profit >= 0 ? 'text-green-600' : 'text-red-500';
+            return `<span class="${color} font-semibold">${prefix}${formatCurrency(Math.abs(profit))}</span>`;
+          })()
+        : statusLabel;
       const wagerLabel = escapeHtml(detail.description || `Wager #${detail.id}`);
       const amount = typeof detail.amount === 'number' && !Number.isNaN(detail.amount)
         ? `<div class="text-xs text-gray-500 mt-0.5">Stake: ${formatCurrency(detail.amount)}</div>`
