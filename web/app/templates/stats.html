@@ -77,7 +77,8 @@
     profit: chartConfig.profit || [],
     bets: chartConfig.bets || [],
   };
-  const DENSE_WAGER_THRESHOLD = 8;
+  const DENSE_WAGER_THRESHOLD = 7;
+  const COLLAPSED_WAGER_COUNT = 4;
   const dateRange = chartConfig.range || {};
   const palette = ['#2563eb', '#dc2626', '#16a34a', '#9333ea', '#f97316', '#0891b2'];
   const escapeHtml = (value = '') => String(value)
@@ -166,40 +167,37 @@
     let tooltipEl = chartInstance.canvas.parentNode.querySelector('.chartjs-tooltip');
     if (!tooltipEl) {
       tooltipEl = document.createElement('div');
-      tooltipEl.className = 'chartjs-tooltip pointer-events-none absolute z-10';
+      tooltipEl.className = 'chartjs-tooltip absolute z-10';
       tooltipEl.style.opacity = 0;
       tooltipEl.style.transition = 'opacity 150ms ease';
       tooltipEl.innerHTML = '<div class="rounded-lg bg-white shadow-xl border border-gray-200 p-3 text-sm max-w-xs"></div>';
       chartInstance.canvas.parentNode.appendChild(tooltipEl);
     }
+    if (!tooltipEl.dataset.boundClick) {
+      tooltipEl.addEventListener('click', () => {
+        const key = tooltipEl.dataset.pointKey;
+        if (!key || !tooltipEl.dataset.canExpand) {
+          return;
+        }
+        expandedTooltipKey = expandedTooltipKey === key ? null : key;
+        if (lastTooltipContext) {
+          externalTooltipHandler(lastTooltipContext);
+        }
+      });
+      tooltipEl.dataset.boundClick = 'true';
+    }
     return tooltipEl;
   };
-  const detailPanel = {
-    container: document.getElementById('wager-detail-panel'),
-    meta: document.getElementById('detail-meta'),
-    date: document.getElementById('detail-date'),
-    summary: document.getElementById('detail-summary'),
-    list: document.getElementById('detail-list'),
-    closeBtn: document.getElementById('detail-close'),
-  };
-  const renderDetailPanel = ({label, metric, dateLabel, summaryCount, summaryValue, details}) => {
-    if (!detailPanel.container) return;
-    detailPanel.meta.textContent = metric === 'bets' ? 'Bets placed' : 'Profit / loss';
-    detailPanel.date.textContent = `${dateLabel} • ${label}`;
-    detailPanel.summary.textContent = `${summaryCount} • ${summaryValue}`;
-    detailPanel.list.innerHTML = buildDetailMarkup(details);
-    detailPanel.container.classList.remove('hidden');
-  };
-  if (detailPanel.closeBtn) {
-    detailPanel.closeBtn.addEventListener('click', () => {
-      detailPanel.container.classList.add('hidden');
-    });
-  }
+  let expandedTooltipKey = null;
+  let lastTooltipContext = null;
   const externalTooltipHandler = (context) => {
     const {chart, tooltip} = context;
     const tooltipEl = getOrCreateTooltip(chart);
     if (tooltip.opacity === 0 || !tooltip.dataPoints || !tooltip.dataPoints.length) {
       tooltipEl.style.opacity = 0;
+      tooltipEl.style.pointerEvents = 'none';
+      tooltipEl.dataset.pointKey = '';
+      tooltipEl.dataset.canExpand = '';
       return;
     }
     const dataPoint = tooltip.dataPoints[0];
@@ -216,14 +214,23 @@
     const summaryValue = metric === 'bets'
       ? `${value} total`
       : `Cumulative: ${formatCurrency(value)}`;
-    const denseHint = details.length > DENSE_WAGER_THRESHOLD
-      ? '<div class="text-[11px] text-blue-600 font-semibold mt-2">Multiple wagers — click to open a scrollable list below.</div>'
+    const currentKey = `${dataPoint.datasetIndex}-${dataPoint.dataIndex}-${dataPoint.parsed.x}`;
+    const isDense = details.length > DENSE_WAGER_THRESHOLD;
+    const isExpanded = expandedTooltipKey === currentKey;
+    const visibleDetails = isDense && !isExpanded ? details.slice(0, COLLAPSED_WAGER_COUNT) : details;
+    const overflowClass = isDense && isExpanded ? 'max-h-64 overflow-y-auto pr-1' : '';
+    const denseHint = isDense
+      ? `<div class="text-[11px] text-blue-600 font-semibold mt-2">${isExpanded ? 'Click to collapse list' : 'Multiple wagers — click to expand'}</div>`
+      : '';
+    const moreNote = isDense && !isExpanded && details.length > COLLAPSED_WAGER_COUNT
+      ? `<div class="text-[11px] text-gray-500">Showing ${COLLAPSED_WAGER_COUNT} of ${details.length} wagers</div>`
       : '';
     tooltipEl.querySelector('div').innerHTML = `
       <div class="text-xs font-semibold text-gray-500 mb-1">${escapeHtml(label)}</div>
       <div class="text-sm font-bold text-gray-900">${escapeHtml(dateLabel)}</div>
       <div class="text-xs text-gray-600 mb-2">${escapeHtml(summaryCount)} · ${escapeHtml(summaryValue)}</div>
-      <div class="flex flex-col gap-2">${buildDetailMarkup(details)}</div>
+      <div class="flex flex-col gap-2 ${overflowClass}">${buildDetailMarkup(visibleDetails)}</div>
+      ${moreNote}
       ${denseHint}
     `;
 
@@ -231,6 +238,10 @@
     tooltipEl.style.opacity = 1;
     tooltipEl.style.left = `${positionX + tooltip.caretX + 12}px`;
     tooltipEl.style.top = `${positionY + tooltip.caretY - tooltipEl.offsetHeight / 2}px`;
+    tooltipEl.style.pointerEvents = isDense ? 'auto' : 'none';
+    tooltipEl.dataset.pointKey = currentKey;
+    tooltipEl.dataset.canExpand = isDense ? 'true' : '';
+    lastTooltipContext = context;
   };
 
   const prepareDatasets = (datasets) => datasets.map((dataset, index) => {
