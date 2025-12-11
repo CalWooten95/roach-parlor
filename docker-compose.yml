@@ -1,6 +1,18 @@
 # Docker Compose file for multi-container setup
 version: '3.8'
 services:
+  # React Frontend
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - web
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+      - REACT_APP_WS_URL=ws://localhost:8000
+
+  # FastAPI Backend
   web:
     build: ./web
     ports:
@@ -13,6 +25,8 @@ services:
       - ADMIN_USERNAME=${ADMIN_USERNAME}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - ADMIN_ACCESS_KEY=${ADMIN_ACCESS_KEY}
+
+  # Discord Bot
   bot:
     build: ./bot
     environment:
@@ -23,6 +37,8 @@ services:
       WEB_UI_URL: ${WEB_UI_URL}
     depends_on:
       - web
+
+  # PostgreSQL Database
   db:
     image: postgres:14
     restart: always
@@ -34,5 +50,6 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
 volumes:
   postgres_data:
