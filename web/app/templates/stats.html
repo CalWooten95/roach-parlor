@@ -77,7 +77,6 @@
     profit: chartConfig.profit || [],
     bets: chartConfig.bets || [],
   };
-  const DENSE_WAGER_THRESHOLD = 8;
   const dateRange = chartConfig.range || {};
   const palette = ['#2563eb', '#dc2626', '#16a34a', '#9333ea', '#f97316', '#0891b2'];
   const escapeHtml = (value = '') => String(value)
@@ -169,46 +168,10 @@
       tooltipEl.className = 'chartjs-tooltip pointer-events-none absolute z-10';
       tooltipEl.style.opacity = 0;
       tooltipEl.style.transition = 'opacity 150ms ease';
-      tooltipEl.innerHTML = '<div class="rounded-lg bg-white shadow-xl border border-gray-200 p-3 text-sm max-w-xs max-h-[320px] overflow-hidden"></div>';
+      tooltipEl.innerHTML = '<div class="rounded-lg bg-white shadow-xl border border-gray-200 p-3 text-sm max-w-xs"></div>';
       chartInstance.canvas.parentNode.appendChild(tooltipEl);
     }
     return tooltipEl;
-  };
-  const getOrCreateDetailPanel = () => {
-    let panel = document.body.querySelector('.wager-detail-panel');
-    if (!panel) {
-      panel = document.createElement('div');
-      panel.className = 'wager-detail-panel fixed inset-0 z-40 hidden';
-      panel.innerHTML = `
-        <div class="absolute inset-0 bg-black bg-opacity-40 transition-opacity"></div>
-        <div class="relative w-full h-full flex items-start justify-center overflow-auto py-10 px-4">
-          <div class="relative bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-gray-200">
-            <div class="flex items-start justify-between gap-3 border-b border-gray-100 px-5 py-4">
-              <div>
-                <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide" data-panel-meta></div>
-                <div class="text-lg font-bold text-gray-900 leading-tight" data-panel-date></div>
-                <div class="text-xs text-gray-600 mt-1" data-panel-summary></div>
-              </div>
-              <button type="button" class="text-gray-500 hover:text-gray-800 transition" aria-label="Close wager detail" data-panel-close>&times;</button>
-            </div>
-            <div class="p-5 max-h-[65vh] overflow-y-auto space-y-3 bg-gray-50" data-panel-body></div>
-          </div>
-        </div>
-      `;
-      document.body.appendChild(panel);
-      const hide = () => panel.classList.add('hidden');
-      panel.querySelector('[data-panel-close]').addEventListener('click', hide);
-      panel.querySelector('.bg-black').addEventListener('click', hide);
-    }
-    return panel;
-  };
-  const showDetailPanel = ({label, metric, dateLabel, summaryCount, summaryValue, details}) => {
-    const panel = getOrCreateDetailPanel();
-    panel.querySelector('[data-panel-meta]').textContent = metric === 'bets' ? 'Bets placed' : 'Profit / loss';
-    panel.querySelector('[data-panel-date]').textContent = `${dateLabel} • ${label}`;
-    panel.querySelector('[data-panel-summary]').textContent = `${summaryCount} • ${summaryValue}`;
-    panel.querySelector('[data-panel-body]').innerHTML = buildDetailMarkup(details);
-    panel.classList.remove('hidden');
   };
   const externalTooltipHandler = (context) => {
     const {chart, tooltip} = context;
@@ -231,15 +194,11 @@
     const summaryValue = metric === 'bets'
       ? `${value} total`
       : `Cumulative: ${formatCurrency(value)}`;
-    const denseHint = details.length > DENSE_WAGER_THRESHOLD
-      ? '<div class="text-[11px] text-blue-600 font-semibold mt-2">Multiple wagers — click the point to scroll through them.</div>'
-      : '';
     tooltipEl.querySelector('div').innerHTML = `
       <div class="text-xs font-semibold text-gray-500 mb-1">${escapeHtml(label)}</div>
       <div class="text-sm font-bold text-gray-900">${escapeHtml(dateLabel)}</div>
       <div class="text-xs text-gray-600 mb-2">${escapeHtml(summaryCount)} · ${escapeHtml(summaryValue)}</div>
       <div class="flex flex-col gap-2">${buildDetailMarkup(details)}</div>
-      ${denseHint}
     `;
 
     const {offsetLeft: positionX, offsetTop: positionY} = chart.canvas;
@@ -323,41 +282,6 @@
       tooltipEl.style.opacity = 0;
     }
   };
-  const describePoint = (point, dataset) => {
-    const dateValue = typeof point.rawDate !== 'undefined' ? point.rawDate : point.x;
-    const parsedDate = parseDateValue(dateValue);
-    const dateLabel = parsedDate ? new Intl.DateTimeFormat(undefined, {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'}).format(new Date(parsedDate)) : 'Unknown date';
-    const metric = dataset.metric || defaultKey;
-    const details = Array.isArray(point.bets) ? point.bets : [];
-    const summaryCount = details.length
-      ? `${details.length} bet${details.length === 1 ? '' : 's'} ${metric === 'bets' ? 'placed' : 'resolved'}`
-      : `No bets ${metric === 'bets' ? 'placed' : 'resolved'}`;
-    const summaryValue = metric === 'bets'
-      ? `${point.y} total`
-      : `Cumulative: ${formatCurrency(point.y)}`;
-    return {
-      label: dataset.label || 'Player',
-      metric,
-      dateLabel,
-      summaryCount,
-      summaryValue,
-      details,
-    };
-  };
-  context.canvas.addEventListener('click', (event) => {
-    const points = chart.getElementsAtEventForMode(event, 'nearest', {intersect: true}, true);
-    if (!points.length) {
-      return;
-    }
-    const first = points[0];
-    const dataset = chart.data.datasets[first.datasetIndex];
-    const point = dataset.data[first.index];
-    const details = Array.isArray(point.bets) ? point.bets : [];
-    if (!details.length) {
-      return;
-    }
-    showDetailPanel(describePoint(point, dataset));
-  });
 
   const applyAxisRange = () => {
     const min = parseDateValue(dateRange.start);
