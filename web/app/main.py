@@ -630,17 +630,14 @@ async def view_stats(request: Request, db=Depends(get_db)):
 
         if daily_bets:
             bet_points: list[dict[str, object]] = []
-            current_day = window_start
-            while current_day <= window_end:
-                value = daily_bets.get(current_day, 0)
+            for bet_day in sorted(daily_bets.keys()):
                 bet_points.append(
                     {
-                        "x": current_day.isoformat(),
-                        "y": value,
-                        "bets": daily_bet_details.get(current_day, []),
+                        "x": bet_day.isoformat(),
+                        "y": daily_bets[bet_day],
+                        "bets": daily_bet_details.get(bet_day, []),
                     }
                 )
-                current_day += timedelta(days=1)
             bet_datasets.append(
                 {
                     "label": user.display_name or f"Player {user.id}",
