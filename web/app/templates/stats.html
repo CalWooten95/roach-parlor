@@ -198,6 +198,7 @@
       tooltipEl.style.pointerEvents = 'none';
       tooltipEl.dataset.pointKey = '';
       tooltipEl.dataset.canExpand = '';
+      lastTooltipContext = null;
       return;
     }
     const dataPoint = tooltip.dataPoints[0];
@@ -220,7 +221,7 @@
     const visibleDetails = isDense && !isExpanded ? details.slice(0, COLLAPSED_WAGER_COUNT) : details;
     const overflowClass = isDense && isExpanded ? 'max-h-64 overflow-y-auto pr-1' : '';
     const denseHint = isDense
-      ? `<div class="text-[11px] text-blue-600 font-semibold mt-2">${isExpanded ? 'Click to collapse list' : 'Multiple wagers — click to expand'}</div>`
+      ? `<div class="text-[11px] text-blue-600 font-semibold mt-2">${isExpanded ? 'Click point again to collapse' : 'Multiple wagers — click the point to expand & scroll'}</div>`
       : '';
     const moreNote = isDense && !isExpanded && details.length > COLLAPSED_WAGER_COUNT
       ? `<div class="text-[11px] text-gray-500">Showing ${COLLAPSED_WAGER_COUNT} of ${details.length} wagers</div>`
@@ -238,7 +239,7 @@
     tooltipEl.style.opacity = 1;
     tooltipEl.style.left = `${positionX + tooltip.caretX + 12}px`;
     tooltipEl.style.top = `${positionY + tooltip.caretY - tooltipEl.offsetHeight / 2}px`;
-    tooltipEl.style.pointerEvents = isDense ? 'auto' : 'none';
+    tooltipEl.style.pointerEvents = 'none';
     tooltipEl.dataset.pointKey = currentKey;
     tooltipEl.dataset.canExpand = isDense ? 'true' : '';
     lastTooltipContext = context;
@@ -397,6 +398,22 @@
 
   tabs.forEach((tab) => {
     tab.addEventListener('click', () => activateTab(tab.dataset.chart));
+  });
+
+  context.canvas.addEventListener('click', (event) => {
+    const points = chart.getElementsAtEventForMode(event, 'nearest', {intersect: true}, true);
+    if (!points.length) {
+      return;
+    }
+    const {datasetIndex, index, element} = points[0];
+    const rawParsedX = element?.$context?.parsed?.x;
+    const rawPoint = chart.data.datasets[datasetIndex]?.data?.[index] || {};
+    const rawDate = typeof rawPoint.rawDate !== 'undefined' ? rawPoint.rawDate : rawPoint.x;
+    const parsedKey = parseDateValue(rawDate);
+    const key = `${datasetIndex}-${index}-${typeof rawParsedX !== 'undefined' ? rawParsedX : parsedKey ?? rawDate ?? ''}`;
+    expandedTooltipKey = expandedTooltipKey === key ? null : key;
+    chart.setActiveElements([{datasetIndex, index}]);
+    chart.update();
   });
 
   applyAxisRange();
