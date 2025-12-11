@@ -186,19 +186,38 @@
       });
       tooltipEl.dataset.boundClick = 'true';
     }
+    if (!tooltipEl.dataset.boundHover) {
+      tooltipEl.addEventListener('mouseenter', () => {
+        tooltipPinned = true;
+        if (lastTooltipContext) {
+          externalTooltipHandler(lastTooltipContext);
+        }
+      });
+      tooltipEl.addEventListener('mouseleave', () => {
+        tooltipPinned = false;
+        tooltipEl.style.opacity = 0;
+      });
+      tooltipEl.dataset.boundHover = 'true';
+    }
     return tooltipEl;
   };
   let expandedTooltipKey = null;
   let lastTooltipContext = null;
+  let tooltipPinned = false;
   const externalTooltipHandler = (context) => {
     const {chart, tooltip} = context;
     const tooltipEl = getOrCreateTooltip(chart);
     if (tooltip.opacity === 0 || !tooltip.dataPoints || !tooltip.dataPoints.length) {
-      tooltipEl.style.opacity = 0;
-      tooltipEl.style.pointerEvents = 'none';
-      tooltipEl.dataset.pointKey = '';
-      tooltipEl.dataset.canExpand = '';
-      lastTooltipContext = null;
+      if (!tooltipPinned || !lastTooltipContext) {
+        tooltipEl.style.opacity = 0;
+        tooltipEl.style.pointerEvents = 'none';
+        tooltipEl.dataset.pointKey = '';
+        tooltipEl.dataset.canExpand = '';
+        lastTooltipContext = null;
+      } else {
+        tooltipEl.style.opacity = 1;
+        tooltipEl.style.pointerEvents = 'auto';
+      }
       return;
     }
     const dataPoint = tooltip.dataPoints[0];
@@ -239,7 +258,7 @@
     tooltipEl.style.opacity = 1;
     tooltipEl.style.left = `${positionX + tooltip.caretX + 12}px`;
     tooltipEl.style.top = `${positionY + tooltip.caretY - tooltipEl.offsetHeight / 2}px`;
-    tooltipEl.style.pointerEvents = 'none';
+    tooltipEl.style.pointerEvents = 'auto';
     tooltipEl.dataset.pointKey = currentKey;
     tooltipEl.dataset.canExpand = isDense ? 'true' : '';
     lastTooltipContext = context;
