@@ -604,21 +604,18 @@ async def view_stats(request: Request, db=Depends(get_db)):
             }
         )
 
-        if daily_profit or profit_before_window:
+        if daily_profit:
             profit_points: list[dict[str, object]] = []
-            current_day = window_start
             running_total = profit_before_window
-            while current_day <= window_end:
-                delta = daily_profit.get(current_day, Decimal("0"))
-                running_total += delta
+            for result_day in sorted(daily_profit.keys()):
+                running_total += daily_profit[result_day]
                 profit_points.append(
                     {
-                        "x": current_day.isoformat(),
+                        "x": result_day.isoformat(),
                         "y": float(running_total),
-                        "bets": daily_profit_details.get(current_day, []),
+                        "bets": daily_profit_details.get(result_day, []),
                     }
                 )
-                current_day += timedelta(days=1)
             profit_datasets.append(
                 {
                     "label": user.display_name or f"Player {user.id}",
