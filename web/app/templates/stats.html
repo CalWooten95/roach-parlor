@@ -66,6 +66,19 @@
 </div>
 <div class="bg-white rounded-xl shadow p-4 relative">
   <canvas id="profit-chart" height="120"></canvas>
+  <div id="wager-detail-panel" class="mt-4 hidden">
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <div id="detail-meta" class="text-xs font-semibold text-gray-500 uppercase tracking-wide"></div>
+        <div id="detail-date" class="text-lg font-bold text-gray-900 leading-tight"></div>
+        <div id="detail-summary" class="text-xs text-gray-600 mt-1"></div>
+      </div>
+      <button id="detail-close" type="button" class="text-gray-500 hover:text-gray-800 transition text-lg" aria-label="Close wager list">&times;</button>
+    </div>
+    <div id="detail-list" class="mt-3 bg-gray-50 border border-gray-100 rounded-xl p-3 max-h-72 overflow-y-auto flex flex-col gap-2">
+      <div class="text-xs text-gray-500">Click a data point to see wagers from that date.</div>
+    </div>
+  </div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
@@ -77,6 +90,7 @@
     profit: chartConfig.profit || [],
     bets: chartConfig.bets || [],
   };
+  const DENSE_WAGER_THRESHOLD = 8;
   const dateRange = chartConfig.range || {};
   const palette = ['#2563eb', '#dc2626', '#16a34a', '#9333ea', '#f97316', '#0891b2'];
   const escapeHtml = (value = '') => String(value)
@@ -173,6 +187,27 @@
     }
     return tooltipEl;
   };
+  const detailPanel = {
+    container: document.getElementById('wager-detail-panel'),
+    meta: document.getElementById('detail-meta'),
+    date: document.getElementById('detail-date'),
+    summary: document.getElementById('detail-summary'),
+    list: document.getElementById('detail-list'),
+    closeBtn: document.getElementById('detail-close'),
+  };
+  const renderDetailPanel = ({label, metric, dateLabel, summaryCount, summaryValue, details}) => {
+    if (!detailPanel.container) return;
+    detailPanel.meta.textContent = metric === 'bets' ? 'Bets placed' : 'Profit / loss';
+    detailPanel.date.textContent = `${dateLabel} • ${label}`;
+    detailPanel.summary.textContent = `${summaryCount} • ${summaryValue}`;
+    detailPanel.list.innerHTML = buildDetailMarkup(details);
+    detailPanel.container.classList.remove('hidden');
+  };
+  if (detailPanel.closeBtn) {
+    detailPanel.closeBtn.addEventListener('click', () => {
+      detailPanel.container.classList.add('hidden');
+    });
+  }
   const externalTooltipHandler = (context) => {
     const {chart, tooltip} = context;
     const tooltipEl = getOrCreateTooltip(chart);
@@ -194,11 +229,15 @@
     const summaryValue = metric === 'bets'
       ? `${value} total`
       : `Cumulative: ${formatCurrency(value)}`;
+    const denseHint = details.length > DENSE_WAGER_THRESHOLD
+      ? '<div class="text-[11px] text-blue-600 font-semibold mt-2">Multiple wagers — click to open a scrollable list below.</div>'
+      : '';
     tooltipEl.querySelector('div').innerHTML = `
       <div class="text-xs font-semibold text-gray-500 mb-1">${escapeHtml(label)}</div>
       <div class="text-sm font-bold text-gray-900">${escapeHtml(dateLabel)}</div>
       <div class="text-xs text-gray-600 mb-2">${escapeHtml(summaryCount)} · ${escapeHtml(summaryValue)}</div>
       <div class="flex flex-col gap-2">${buildDetailMarkup(details)}</div>
+      ${denseHint}
     `;
 
     const {offsetLeft: positionX, offsetTop: positionY} = chart.canvas;
@@ -282,6 +321,43 @@
       tooltipEl.style.opacity = 0;
     }
   };
+  const describePoint = (point, dataset) => {
+    const dateValue = typeof point.rawDate !== 'undefined' ? point.rawDate : point.x;
+    const parsedDate = parseDateValue(dateValue);
+    const dateLabel = parsedDate
+      ? new Intl.DateTimeFormat(undefined, {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'}).format(new Date(parsedDate))
+      : 'Unknown date';
+    const metric = dataset.metric || defaultKey;
+    const details = Array.isArray(point.bets) ? point.bets : [];
+    const summaryCount = details.length
+      ? `${details.length} bet${details.length === 1 ? '' : 's'} ${metric === 'bets' ? 'placed' : 'resolved'}`
+      : `No bets ${metric === 'bets' ? 'placed' : 'resolved'}`;
+    const summaryValue = metric === 'bets'
+      ? `${point.y} total`
+      : `Cumulative: ${formatCurrency(point.y)}`;
+    return {
+      label: dataset.label || 'Player',
+      metric,
+      dateLabel,
+      summaryCount,
+      summaryValue,
+      details,
+    };
+  };
+  context.canvas.addEventListener('click', (event) => {
+    const points = chart.getElementsAtEventForMode(event, 'nearest', {intersect: true}, true);
+    if (!points.length) {
+      return;
+    }
+    const first = points[0];
+    const dataset = chart.data.datasets[first.datasetIndex];
+    const point = dataset.data[first.index];
+    const details = Array.isArray(point.bets) ? point.bets : [];
+    if (!details.length) {
+      return;
+    }
+    renderDetailPanel(describePoint(point, dataset));
+  });
 
   const applyAxisRange = () => {
     const min = parseDateValue(dateRange.start);
