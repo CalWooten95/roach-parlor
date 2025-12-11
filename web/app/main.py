@@ -604,21 +604,18 @@ async def view_stats(request: Request, db=Depends(get_db)):
             }
         )
 
-        if daily_profit or profit_before_window:
+        if daily_profit:
             profit_points: list[dict[str, object]] = []
-            current_day = window_start
             running_total = profit_before_window
-            while current_day <= window_end:
-                delta = daily_profit.get(current_day, Decimal("0"))
-                running_total += delta
+            for result_day in sorted(daily_profit.keys()):
+                running_total += daily_profit[result_day]
                 profit_points.append(
                     {
-                        "x": current_day.isoformat(),
+                        "x": result_day.isoformat(),
                         "y": float(running_total),
-                        "bets": daily_profit_details.get(current_day, []),
+                        "bets": daily_profit_details.get(result_day, []),
                     }
                 )
-                current_day += timedelta(days=1)
             profit_datasets.append(
                 {
                     "label": user.display_name or f"Player {user.id}",
@@ -630,17 +627,14 @@ async def view_stats(request: Request, db=Depends(get_db)):
 
         if daily_bets:
             bet_points: list[dict[str, object]] = []
-            current_day = window_start
-            while current_day <= window_end:
-                value = daily_bets.get(current_day, 0)
+            for bet_day in sorted(daily_bets.keys()):
                 bet_points.append(
                     {
-                        "x": current_day.isoformat(),
-                        "y": value,
-                        "bets": daily_bet_details.get(current_day, []),
+                        "x": bet_day.isoformat(),
+                        "y": daily_bets[bet_day],
+                        "bets": daily_bet_details.get(bet_day, []),
                     }
                 )
-                current_day += timedelta(days=1)
             bet_datasets.append(
                 {
                     "label": user.display_name or f"Player {user.id}",
