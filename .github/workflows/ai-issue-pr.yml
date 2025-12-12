@@ -34,6 +34,7 @@ jobs:
     environment: main
     env:
       ISSUE_NUMBER: ${{ inputs.issue_number }}
+      AI_BRANCH: ai/issue-${{ inputs.issue_number }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -66,6 +67,11 @@ jobs:
             --output ai_context/context.md \
             --files-output ai_context/files.txt
 
+      - name: Prepare working branch
+        run: |
+          set -euo pipefail
+          git checkout -B "$AI_BRANCH" origin/main
+
       - name: Run aider to apply changes
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -90,9 +96,8 @@ jobs:
           fi
 
           ISSUE_TITLE="$(jq -r '.title' issue.json)"
-          BRANCH="ai/issue-${ISSUE_NUMBER}"
+          BRANCH="$AI_BRANCH"
 
-          git checkout -B "$BRANCH"
           git add -A
           git commit -m "AI: address #${ISSUE_NUMBER}"
           git push -u origin "$BRANCH" --force-with-lease
