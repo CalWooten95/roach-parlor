@@ -12,6 +12,11 @@ on:
         required: false
         default: "gpt-4o"
         type: string
+      run_smoke_tests:
+        description: "Run smoke tests before creating the PR"
+        required: false
+        type: boolean
+        default: false
       require_smoke_success:
         description: "Only create a PR if smoke tests pass"
         required: false
@@ -69,7 +74,7 @@ jobs:
         run: |
           set -euo pipefail
           mapfile -t FILES < ai_context/files.txt
-          cmd=(aider --yes --disable-playwright --no-detect-urls --model "${{ inputs.openai_model }}" --message-file ai_context/context.md)
+          cmd=(aider --yes --no-auto-commits --disable-playwright --no-detect-urls --model "${{ inputs.openai_model }}" --message-file ai_context/context.md)
           if [[ ${#FILES[@]} -gt 0 ]]; then
             cmd+=("${FILES[@]}")
           fi
@@ -98,7 +103,7 @@ jobs:
 
       - name: Run smoke tests
         id: smoke
-        if: ${{ steps.prepare_branch.outputs.changed == 'true' }}
+        if: ${{ inputs.run_smoke_tests && steps.prepare_branch.outputs.changed == 'true' }}
         continue-on-error: true
         env:
           DATABASE_URL: postgresql://betapp:ci-test@db:5432/betdb
@@ -116,7 +121,7 @@ jobs:
           bash scripts/ci_smoke.sh
 
       - name: Create pull request
-        if: ${{ steps.prepare_branch.outputs.changed == 'true' && (steps.smoke.outcome == 'success' || inputs.require_smoke_success == false) }}
+        if: ${{ steps.prepare_branch.outputs.changed == 'true' && ( !inputs.run_smoke_tests || steps.smoke.outcome == 'success' || inputs.require_smoke_success == false) }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
