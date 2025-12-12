@@ -106,9 +106,9 @@ jobs:
           sed "s/{{ISSUE_NUMBER}}/${ISSUE_NUMBER}/g" \
             .github/pr_template.md > ai_context/pr_body.md
 
-          gh pr create \
-            --head "$BRANCH" \
-            --base main \
-            --title "AI: address #${ISSUE_NUMBER} – ${ISSUE_TITLE}" \
-            --body-file ai_context/pr_body.md \
-            --draft
+          gh api "repos/${{ github.repository }}/pulls" \
+            -f head="$BRANCH" \
+            -f base="main" \
+            -f title="AI: address #${ISSUE_NUMBER} – ${ISSUE_TITLE}" \
+            -F body=@ai_context/pr_body.md \
+            -F draft=true
