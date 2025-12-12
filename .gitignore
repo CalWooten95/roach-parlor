@@ -5,3 +5,4 @@ __pycache__/
 *$py.class
 actions-runner/
 ai_context/
+issue.json

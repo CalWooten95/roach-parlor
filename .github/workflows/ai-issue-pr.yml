@@ -13,6 +13,11 @@ on:
         default: "gpt-4o"
         type: string
       require_smoke_success:
+        description: "Only create a PR when smoke tests pass"
+        required: false
+        type: boolean
+        default: false
+      require_smoke_success:
         description: "Only create a PR if smoke tests pass"
         required: false
         type: boolean
@@ -75,8 +80,30 @@ jobs:
           fi
           "${cmd[@]}"
 
+      - name: Prepare branch with AI changes
+        id: prepare_branch
+        run: |
+          set -euo pipefail
+          if [[ -z "$(git status --porcelain)" ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          ISSUE_TITLE="$(jq -r '.title' issue.json)"
+          BRANCH="ai/issue-${ISSUE_NUMBER}"
+
+          git checkout -B "$BRANCH"
+          git add -A
+          git commit -m "AI: address #${ISSUE_NUMBER}"
+          git push -u origin "$BRANCH" --force-with-lease
+
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "issue_title=${ISSUE_TITLE}" >> "$GITHUB_OUTPUT"
+
       - name: Run smoke tests
         id: smoke
+        if: ${{ steps.prepare_branch.outputs.changed == 'true' }}
         continue-on-error: true
         env:
           DATABASE_URL: postgresql://betapp:ci-test@db:5432/betdb
@@ -94,23 +121,13 @@ jobs:
           bash scripts/ci_smoke.sh
 
       - name: Create pull request
-        if: ${{ steps.smoke.outcome == 'success' || inputs.require_smoke_success == false }}
+        if: ${{ steps.prepare_branch.outputs.changed == 'true' && (steps.smoke.outcome == 'success' || inputs.require_smoke_success == false) }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if [[ -z "$(git status --porcelain)" ]]; then
-            echo "No changes generated; skipping PR creation."
-            exit 0
-          fi
-
-          ISSUE_TITLE="$(jq -r '.title' issue.json)"
-          BRANCH="ai/issue-${ISSUE_NUMBER}"
-
-          git checkout -b "$BRANCH"
-          git add -A
-          git commit -m "AI: address #${ISSUE_NUMBER}"
-          git push -u origin "$BRANCH"
+          ISSUE_TITLE="${{ steps.prepare_branch.outputs.issue_title }}"
+          BRANCH="${{ steps.prepare_branch.outputs.branch }}"
 
           sed "s/{{ISSUE_NUMBER}}/${ISSUE_NUMBER}/g" \
             .github/pr_template.md > ai_context/pr_body.md
