@@ -12,6 +12,11 @@ on:
         required: false
         default: "gpt-4o"
         type: string
+      require_smoke_success:
+        description: "Only create a PR if smoke tests pass"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -71,6 +76,8 @@ jobs:
           "${cmd[@]}"
 
       - name: Run smoke tests
+        id: smoke
+        continue-on-error: true
         env:
           DATABASE_URL: postgresql://betapp:ci-test@db:5432/betdb
           POSTGRES_PASSWORD: ci-test
@@ -87,6 +94,7 @@ jobs:
           bash scripts/ci_smoke.sh
 
       - name: Create pull request
+        if: ${{ steps.smoke.outcome == 'success' || inputs.require_smoke_success == false }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
