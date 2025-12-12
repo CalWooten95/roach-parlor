@@ -101,15 +101,8 @@ jobs:
           git commit -m "AI: address #${ISSUE_NUMBER}"
           git push -u origin "$BRANCH"
 
-          printf '%s\n' \
-            '## Automated change' \
-            '- AI agent: aider' \
-            '- Command log: `scripts/ci_smoke.sh`' \
-            '' \
-            "Closes #${ISSUE_NUMBER}" \
-            '' \
-            'This pull request was generated automatically from issue context and includes a passing smoke test run. Please review before merging.' \
-            > ai_context/pr_body.md
+          sed "s/{{ISSUE_NUMBER}}/${ISSUE_NUMBER}/g" \
+            .github/pr_template.md > ai_context/pr_body.md
 
           gh pr create \
             --head "$BRANCH" \
