@@ -63,7 +63,7 @@ jobs:
         run: |
           set -euo pipefail
           mapfile -t FILES < ai_context/files.txt
-          cmd=(aider --yes --model "${{ inputs.openai_model }}" --message-file ai_context/context.md)
+          cmd=(aider --yes --offline --model "${{ inputs.openai_model }}" --message-file ai_context/context.md)
           if [[ ${#FILES[@]} -gt 0 ]]; then
             cmd+=("${FILES[@]}")
           fi
