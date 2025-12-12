@@ -58,6 +58,8 @@ jobs:
       - name: Run aider to apply changes
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          AIDER_NO_WEB: "1"
+          AIDER_SKIP_PLAYWRIGHT_INSTALL: "1"
         run: |
           set -euo pipefail
           mapfile -t FILES < ai_context/files.txt
