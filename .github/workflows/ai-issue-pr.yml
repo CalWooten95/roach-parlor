@@ -46,7 +46,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh issue view "$ISSUE_NUMBER" --json number,title,body,comments,htmlUrl,url > issue.json
+          gh issue view "$ISSUE_NUMBER" --json number,title,body,comments,url > issue.json
 
       - name: Build AI context pack
         run: |
