@@ -21,6 +21,7 @@ permissions:
 jobs:
   build-pr:
     runs-on: ubuntu-latest
+    environment: main
     env:
       ISSUE_NUMBER: ${{ inputs.issue_number }}
     steps:
