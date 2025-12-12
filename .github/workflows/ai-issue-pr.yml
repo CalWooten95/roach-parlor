@@ -13,11 +13,6 @@ on:
         default: "gpt-4o"
         type: string
       require_smoke_success:
-        description: "Only create a PR when smoke tests pass"
-        required: false
-        type: boolean
-        default: false
-      require_smoke_success:
         description: "Only create a PR if smoke tests pass"
         required: false
         type: boolean
