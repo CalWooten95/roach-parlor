@@ -158,6 +158,22 @@ Key tables and relationships (managed through SQLAlchemy and Alembic):
 4. Web UI becomes available at `http://localhost:8000`; Discord bot logs to stdout once connected.
 5. To run the FastAPI app locally without Docker, install dependencies from `web/requirements.txt`, set env vars, and launch `uvicorn app.main:app --reload` from within `web/`.
 
+## Health Checks & Smoke Tests
+
+- `GET /health` now returns a JSON payload once the FastAPI app and Postgres can be reached. CI and ops tooling can poll this endpoint to gate deployments or smoke tests.
+- `scripts/ci_smoke.sh` compiles the Python sources, launches `docker compose` with a temporary project name, and waits for `/health` to succeed (tearing everything down afterward). Run it locally for a full-stack smoke check, or rely on it inside CI whenever AI automation proposes a change.
+
+## AI Issue-to-PR Workflow
+
+The repository includes `.github/workflows/ai-issue-pr.yml`, which turns a GitHub issue into a draft pull request using aider plus the OpenAI API:
+
+1. Trigger the workflow manually (`workflow_dispatch`) and provide the target issue number (the issue should follow the “AI-ready” template with clear acceptance criteria).
+2. The workflow checks out the repo, captures the issue via `gh issue view`, runs `scripts/build_ai_context.py` to assemble a bounded prompt (README, key app files, etc.), and feeds that into aider (`aider-chat`).
+3. After aider edits the repo, `scripts/ci_smoke.sh` ensures the stack still builds and the `/health` endpoint responds.
+4. If changes exist, the workflow creates a branch named `ai/issue-<n>` and opens a draft PR referencing the issue.
+
+Before using the workflow, add an `OPENAI_API_KEY` repository secret (the built-in `GITHUB_TOKEN` already covers repo/PR access). Customize the workflow inputs or the context-building script as needed if future issues require additional files or commands.
+
 ## Development Patterns & Tips
 
 - Prefer editing through CRUD helpers instead of inline SQL in routes/templates. This keeps logic centralized and consistent between API and admin flows.
