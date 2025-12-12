@@ -1,0 +1,112 @@
+name: AI Issue to PR
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Issue number to solve"
+        required: true
+        type: number
+      openai_model:
+        description: "OpenAI model identifier"
+        required: false
+        default: "gpt-4o"
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: read
+
+jobs:
+  build-pr:
+    runs-on: ubuntu-latest
+    env:
+      ISSUE_NUMBER: ${{ inputs.issue_number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install aider
+        run: |
+          python -m pip install --upgrade pip
+          pip install aider-chat
+
+      - name: Configure git user
+        run: |
+          git config user.name "ai-automation-bot"
+          git config user.email "ai-bot@users.noreply.github.com"
+
+      - name: Fetch issue context
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue view "$ISSUE_NUMBER" --json number,title,body,comments,htmlUrl,url > issue.json
+
+      - name: Build AI context pack
+        run: |
+          python scripts/build_ai_context.py \
+            --issue-json issue.json \
+            --output ai_context/context.md \
+            --files-output ai_context/files.txt
+
+      - name: Run aider to apply changes
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set -euo pipefail
+          mapfile -t FILES < ai_context/files.txt
+          cmd=(aider --yes --model "${{ inputs.openai_model }}" --message-file ai_context/context.md)
+          if [[ ${#FILES[@]} -gt 0 ]]; then
+            cmd+=("${FILES[@]}")
+          fi
+          "${cmd[@]}"
+
+      - name: Run smoke tests
+        env:
+          DATABASE_URL: postgresql://betapp:ci-test@db:5432/betdb
+          POSTGRES_PASSWORD: ci-test
+          SESSION_SECRET: test-session-secret
+          ADMIN_USERNAME: admin
+          ADMIN_PASSWORD: changeme
+          ADMIN_ACCESS_KEY: changeme
+          API_URL: http://web:8000
+          TARGET_CHANNEL: ci-smoke
+          WEB_UI_URL: http://localhost:8000
+          DISCORD_TOKEN: placeholder
+          OPENAI_API_KEY: placeholder
+        run: |
+          bash scripts/ci_smoke.sh
+
+      - name: Create pull request
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$(git status --porcelain)" ]]; then
+            echo "No changes generated; skipping PR creation."
+            exit 0
+          fi
+
+          ISSUE_TITLE="$(jq -r '.title' issue.json)"
+          BRANCH="ai/issue-${ISSUE_NUMBER}"
+
+          git checkout -b "$BRANCH"
+          git add -A
+          git commit -m "AI: address #${ISSUE_NUMBER}"
+          git push -u origin "$BRANCH"
+
+          sed "s/{{ISSUE_NUMBER}}/${ISSUE_NUMBER}/g" \
+            .github/pr_template.md > ai_context/pr_body.md
+
+          gh pr create \
+            --head "$BRANCH" \
+            --base main \
+            --title "AI: address #${ISSUE_NUMBER} – ${ISSUE_TITLE}" \
+            --body-file ai_context/pr_body.md \
+            --draft

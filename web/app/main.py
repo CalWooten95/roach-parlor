@@ -9,9 +9,10 @@ from typing import Optional
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Request, Depends, Form, HTTPException, Query
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response, JSONResponse
 import requests
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import text
 
 from .database import SessionLocal, get_db, init_db
 from . import crud, models, schemas
@@ -409,6 +410,19 @@ def _serialize_schedule(days: list[espn.DaySchedule]):
             }
         )
     return serialized
+
+
+@app.get("/health")
+async def health_check():
+    details = {"app": "ok"}
+    try:
+        with SessionLocal() as session:
+            session.execute(text("SELECT 1"))
+    except Exception as exc:  # pragma: no cover - best effort logging
+        logger.exception("Health check failed to reach database: %s", exc)
+        return JSONResponse(status_code=503, content={"app": "ok", "database": "unreachable"})
+    details["database"] = "ok"
+    return details
 
 
 @app.on_event("startup")
