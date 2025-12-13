@@ -140,6 +140,8 @@ Key tables and relationships (managed through SQLAlchemy and Alembic):
 | `ADMIN_ACCESS_KEY` | web | Legacy fallback for environments that still rely on a shared key; safe to drop once the new vars are set. |
 | `AI_PROXY_BASE_URL` | web | Optional override for the remote AI insights app URL that `/ai-tools` relays (defaults to `http://40netse.fortiddns.com:3002/`). |
 | `POSTGRES_PASSWORD` etc. | db | Postgres credentials (see `docker-compose.yml`). |
+| `WEB_PORT` | docker compose | Host port that forwards to the FastAPI container's port 8000 (defaults to 8000). Preview stacks override this to avoid conflicts. |
+| `DB_PORT` | docker compose | Host port exposed for Postgres (defaults to 5432). Preview stacks override this to avoid conflicts. |
 | `DISCORD_TOKEN` | bot | Discord bot authentication token. |
 | `OPENAI_API_KEY` | bot | Key for OpenAI Responses API. |
 | `API_URL` | bot | Base URL of the FastAPI service (`http://web:8000` in Docker, `http://localhost:8000` locally). |
@@ -173,6 +175,14 @@ The repository includes `.github/workflows/ai-issue-pr.yml`, which turns a GitHu
 4. If changes exist, the workflow creates a branch named `ai/issue-<n>` and opens a draft PR referencing the issue.
 
 Before using the workflow, add an `OPENAI_API_KEY` repository secret (the built-in `GITHUB_TOKEN` already covers repo/PR access). Customize the workflow inputs or the context-building script as needed if future issues require additional files or commands.
+
+### Ephemeral preview environments
+
+You can optionally spin up a 10-minute Cloudflare tunnel preview of the AI-generated branch directly from the workflow:
+
+- Set the `enable_preview` input to `true` (and optionally `preview_ttl_minutes`) when dispatching the workflow. The job will build the Docker Compose stack under a unique project name, map it to random host ports (`WEB_PORT`, `DB_PORT`), and expose it via `cloudflared tunnel --url http://localhost:<port>`.
+- The preview URL is printed in the workflow logs. The stack stays up for the requested TTL (default 10 minutes), after which `scripts/preview_cleanup.sh` tears down the Compose project and kills the Cloudflare tunnel so prod remains untouched.
+- Because the preview shares the same machine as prod, ensure `cloudflared` and Docker are available on the runner and that your long-running prod stack keeps using the defaults (the preview only overrides host ports for its own Compose project).
 
 ## Development Patterns & Tips
 

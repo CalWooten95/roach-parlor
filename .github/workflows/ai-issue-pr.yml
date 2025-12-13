@@ -22,6 +22,16 @@ on:
         required: false
         type: boolean
         default: false
+      enable_preview:
+        description: "Spin up a Cloudflare tunnel preview environment"
+        required: false
+        type: boolean
+        default: false
+      preview_ttl_minutes:
+        description: "Minutes to keep the preview environment alive"
+        required: false
+        type: number
+        default: 10
 
 permissions:
   contents: write
@@ -70,6 +80,7 @@ jobs:
       - name: Prepare working branch
         run: |
           set -euo pipefail
+          git fetch origin main
           git checkout -B "$AI_BRANCH" origin/main
 
       - name: Run aider to apply changes
@@ -105,6 +116,20 @@ jobs:
           echo "changed=true" >> "$GITHUB_OUTPUT"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
           echo "issue_title=${ISSUE_TITLE}" >> "$GITHUB_OUTPUT"
+
+      - name: Start preview environment
+        if: ${{ inputs.enable_preview && steps.prepare_branch.outputs.changed == 'true' }}
+        id: preview_start
+        env:
+          PREVIEW_PROJECT_NAME: preview-${{ github.run_id }}-${{ github.run_attempt }}-issue-${{ inputs.issue_number }}
+          PREVIEW_BRANCH: ${{ env.AI_BRANCH }}
+        run: |
+          bash scripts/preview_start.sh
+
+      - name: Preview URL
+        if: ${{ inputs.enable_preview && steps.preview_start.outcome == 'success' }}
+        run: |
+          echo "Preview URL (expires in ${{ inputs.preview_ttl_minutes }} minutes): ${{ steps.preview_start.outputs.tunnel_url }}"
 
       - name: Run smoke tests
         id: smoke
@@ -143,3 +168,15 @@ jobs:
             -f title="AI: address #${ISSUE_NUMBER} – ${ISSUE_TITLE}" \
             -F body=@ai_context/pr_body.md \
             -F draft=true
+
+      - name: Keep preview alive
+        if: ${{ inputs.enable_preview && steps.preview_start.outcome == 'success' }}
+        run: |
+          sleep $(( inputs.preview_ttl_minutes * 60 ))
+
+      - name: Cleanup preview environment
+        if: ${{ always() && inputs.enable_preview && steps.preview_start.outcome == 'success' }}
+        env:
+          PREVIEW_STATE_FILE: ${{ steps.preview_start.outputs.preview_state_file }}
+        run: |
+          bash scripts/preview_cleanup.sh "$PREVIEW_STATE_FILE"
