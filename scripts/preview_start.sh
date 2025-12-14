@@ -44,6 +44,24 @@ docker compose up -d --build
 LOG_FILE="$STATE_DIR/${PROJECT_NAME}_cloudflared.log"
 touch "$LOG_FILE"
 
+print_log() {
+  if [[ -f "$LOG_FILE" ]]; then
+    echo "[preview] ===== cloudflared log ====="
+    tail -n 200 "$LOG_FILE" || true
+    echo "[preview] ============================"
+  fi
+}
+trap print_log EXIT
+
+print_log() {
+  if [[ -f "$LOG_FILE" ]]; then
+    echo "[preview] ===== cloudflared log ====="
+    tail -n 200 "$LOG_FILE" || true
+    echo "[preview] ============================"
+  fi
+}
+trap print_log EXIT
+
 echo "[preview] starting cloudflared tunnel"
 nohup cloudflared tunnel --no-autoupdate --url "http://localhost:${WEB_PORT}" >"$LOG_FILE" 2>&1 &
 TUNNEL_PID=$!
