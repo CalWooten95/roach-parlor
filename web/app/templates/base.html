@@ -165,7 +165,40 @@ details.collapsible[open] .collapsible-chevron { transform: rotate(90deg); }
   </div>
 </nav>
 <main class="container mx-auto px-4">
-{% block content %}{% endblock %}
+  <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+    <div class="lg:col-span-3">
+      {% block content %}{% endblock %}
+    </div>
+
+    <aside class="hidden lg:block lg:col-span-1">
+      {% if recent_wagers %}
+      <div class="bg-white rounded-xl shadow p-4">
+        <h3 class="text-sm font-semibold mb-2">Recent wagers</h3>
+        <ul class="space-y-3 text-sm text-gray-700">
+          {% for w in recent_wagers %}
+          <li class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="font-medium text-gray-900 truncate">{{ w.user_display_name }}</div>
+              <div class="text-xs text-gray-500 truncate">{{ w.description }}</div>
+              <div class="text-xs text-gray-500 mt-1">
+                Line: {{ w.line or '—' }} · Amt: ${{ '{:,.2f}'.format(w.amount if w.amount is not none else 0) }}
+              </div>
+            </div>
+            <div class="flex-shrink-0 self-start">
+              <span class="px-2 py-0.5 rounded-full text-xs
+                {% if w.status == 'won' %}bg-green-100 text-green-700
+                {% elif w.status == 'lost' %}bg-red-100 text-red-700
+                {% else %}bg-blue-100 text-blue-700{% endif %}">
+                {{ w.status|upper }}
+              </span>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+    </aside>
+  </div>
 </main>
 <div id="blackjack-widget" class="fixed top-24 right-4 w-72 bg-white rounded-2xl border border-gray-200 p-4 text-sm blackjack-collapsed">
   <div class="flex items-center justify-between mb-3">

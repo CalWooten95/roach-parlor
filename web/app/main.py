@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response, JSONResp
 import requests
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import text
+from sqlalchemy.orm import selectinload
 
 from .database import SessionLocal, get_db, init_db
 from . import crud, models, schemas
@@ -465,7 +466,43 @@ async def read_dashboard(request: Request, db=Depends(get_db)):
         for wager in wagers:
             for leg in wager.legs:
                 leg.matched_teams = crud.match_leg_description_to_teams(leg.description, team_lookup)
-    return templates.TemplateResponse("index.html", {"request": request, "users": users})
+
+    # Build a small "recent wagers" list (5 most recent wagers across all users)
+    recent_wagers: list[dict[str, object]] = []
+    try:
+        recent_query = (
+            db.query(models.Wager)
+            .order_by(models.Wager.created_at.desc())
+            .limit(5)
+            .all()
+        )
+    except Exception:
+        recent_query = []
+
+    for wager in recent_query:
+        try:
+            user = getattr(wager, "user", None)
+            user_display = getattr(user, "display_name", None) or (f"User {getattr(user, 'id', '')}" if user else "Unknown")
+            status = _normalize_wager_status(wager)
+            try:
+                amount_value = float(wager.amount) if wager.amount is not None else None
+            except Exception:
+                amount_value = None
+            recent_wagers.append(
+                {
+                    "id": wager.id,
+                    "user_display_name": user_display,
+                    "description": (wager.description or "").strip(),
+                    "amount": amount_value,
+                    "line": wager.line or "",
+                    "status": status,
+                    "created_at": getattr(wager, "created_at", None),
+                }
+            )
+        except Exception:
+            continue
+
+    return templates.TemplateResponse("index.html", {"request": request, "users": users, "recent_wagers": recent_wagers})
 
 
 @app.get("/catalog", response_class=HTMLResponse)
