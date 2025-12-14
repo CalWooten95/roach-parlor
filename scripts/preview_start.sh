@@ -63,9 +63,8 @@ print_log() {
 trap print_log EXIT
 
 echo "[preview] starting cloudflared tunnel"
-nohup cloudflared tunnel --no-autoupdate --url "http://localhost:${WEB_PORT}" >"$LOG_FILE" 2>&1 &
+stdbuf -oL -eL cloudflared tunnel --no-autoupdate --url "http://localhost:${WEB_PORT}" | tee -a "$LOG_FILE" &
 TUNNEL_PID=$!
-disown "$TUNNEL_PID" || true
 
 TUNNEL_URL=""
 for _ in {1..30}; do
